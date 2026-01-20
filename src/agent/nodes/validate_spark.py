@@ -23,7 +23,7 @@ def validate_spark_node(state: AgentState) -> dict[str, Any]:
         Updated state with spark_valid and spark_error.
     """
     logger.info("=" * 60)
-    logger.info("[Node: validate_spark] Starting Spark SQL validation")
+    logger.info("[Node: validate_spark] Starting Spark SQL validation", extra={"type": "status", "step": "spark", "status": "loading"})
     logger.info(f"Input Spark SQL:\n{state['spark_sql']}")
     
     llm = get_llm()
@@ -47,9 +47,9 @@ def validate_spark_node(state: AgentState) -> dict[str, Any]:
         error = result.get("error")
         
         if is_valid:
-            logger.info("[Node: validate_spark] ✓ Spark SQL is valid")
+            logger.info("[Node: validate_spark] ✓ Spark SQL is valid", extra={"type": "status", "step": "spark", "status": "success"})
         else:
-            logger.warning(f"[Node: validate_spark] ✗ Spark SQL is invalid: {error}")
+            logger.warning(f"[Node: validate_spark] ✗ Spark SQL is invalid: {error}", extra={"type": "status", "step": "spark", "status": "error"})
         
         return {
             "spark_valid": is_valid,
@@ -57,7 +57,7 @@ def validate_spark_node(state: AgentState) -> dict[str, Any]:
         }
     except json.JSONDecodeError:
         # If we can't parse the response, assume invalid with the raw response as error
-        logger.error(f"[Node: validate_spark] Failed to parse LLM response: {response.content}")
+        logger.error(f"[Node: validate_spark] Failed to parse LLM response: {response.content}", extra={"type": "status", "step": "spark", "status": "error"})
         return {
             "spark_valid": False,
             "spark_error": f"Failed to validate Spark SQL: {response.content}",

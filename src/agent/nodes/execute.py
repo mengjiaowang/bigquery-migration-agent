@@ -20,18 +20,18 @@ def execute_node(state: AgentState) -> dict[str, Any]:
         State update with execution results.
     """
     logger.info("============================================================")
-    logger.info("[Node: execute] Starting BigQuery SQL execution")
+    logger.info("[Node: execute] Starting BigQuery SQL execution", extra={"type": "status", "step": "execute", "status": "loading"})
     
     bq_service = BigQueryService()
     execution_result = bq_service.execute_query(state["bigquery_sql"])
     bq_service.close()
     
     if execution_result.success:
-        logger.info("[Node: execute] ✓ SQL execution successful")
+        logger.info("[Node: execute] ✓ SQL execution successful", extra={"type": "status", "step": "execute", "status": "success", "data": {"target_table": execution_result.target_table}})
         logger.info(f"Target Table: {execution_result.target_table}")
         logger.info(f"Result: {execution_result.result}")
     else:
-        logger.error(f"[Node: execute] ✗ SQL execution failed: {execution_result.error_message}")
+        logger.error(f"[Node: execute] ✗ SQL execution failed: {execution_result.error_message}", extra={"type": "status", "step": "execute", "status": "error"})
     
     return {
         "execution_success": execution_result.success,

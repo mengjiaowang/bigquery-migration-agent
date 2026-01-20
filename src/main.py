@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.agent.graph import run_conversion
 from src.schemas.models import ConvertRequest, ConvertResponse, ConversionHistory
-from src.services.log_stream import setup_log_streaming, subscribe_logs, get_recent_logs
+from src.services.log_stream import setup_log_streaming, subscribe_logs, get_recent_logs, init_log_loop
 
 
 # Load environment variables
@@ -93,6 +93,7 @@ app.add_middleware(
 
 # Static files directory
 STATIC_DIR = Path(__file__).parent.parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/ui")
@@ -183,8 +184,9 @@ async def convert_sql(request: ConvertRequest):
     logger.info(f"[API] Input Spark SQL:\n{request.spark_sql}")
     
     try:
-        # Run the conversion workflow
-        result = run_conversion(request.spark_sql)
+        # Run the conversion workflow in a separate thread to avoid blocking the event loop
+        # This ensures that log streaming (SSE) continues to function during execution
+        result = await asyncio.to_thread(run_conversion, request.spark_sql)
         
         # Build conversion history
         history = [
@@ -221,6 +223,9 @@ async def convert_sql(request: ConvertRequest):
             logger.error(f"[API] Spark Error: {result['spark_error']}")
         if warning:
             logger.warning(f"[API] Warning: {warning}")
+
+        # Signal completion to frontend
+        logger.info("[API] process finished", extra={"type": "status", "status": "completed"})
         
         return ConvertResponse(
             success=success,

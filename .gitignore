@@ -2,7 +2,4 @@
 venv
 .DS_Store
 .env
-__pycache__/
-*.py[cod]
-__pycache__/
 *.pyc

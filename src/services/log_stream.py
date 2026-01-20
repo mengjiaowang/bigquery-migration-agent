@@ -9,6 +9,7 @@ from typing import AsyncGenerator, Optional
 # Global log buffer and subscribers
 _log_buffer: deque = deque(maxlen=100)  # Keep last 100 logs
 _subscribers: list[asyncio.Queue] = []
+_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
 class StreamingLogHandler(logging.Handler):
@@ -17,12 +18,27 @@ class StreamingLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         """Emit a log record to all subscribers."""
         try:
+            # Extract extra fields if present
+            extra = record.__dict__
+            
             log_entry = {
                 "time": datetime.now().strftime("%H:%M:%S"),
                 "level": record.levelname.lower(),
                 "message": self.format(record),
                 "name": record.name,
+                "type": extra.get("type", "log"),  # default to "log"
             }
+            
+            # Add optional status fields if present
+            if log_entry["type"] == "status":
+                if "step" in extra:
+                    log_entry["step"] = extra["step"]
+                if "status" in extra:
+                    log_entry["status"] = extra["status"]
+                if "attempt" in extra:
+                    log_entry["attempt"] = extra["attempt"]
+                if "data" in extra:
+                    log_entry["data"] = extra["data"]
             
             # Add to buffer
             _log_buffer.append(log_entry)
@@ -30,16 +46,39 @@ class StreamingLogHandler(logging.Handler):
             # Send to all subscribers
             for queue in _subscribers:
                 try:
-                    queue.put_nowait(log_entry)
-                except asyncio.QueueFull:
-                    pass  # Skip if queue is full
+                    # Thread-safe put
+                    if _loop and _loop.is_running():
+                        _loop.call_soon_threadsafe(queue.put_nowait, log_entry)
+                    else:
+                        # Fallback for sync context or missing loop
+                        try:
+                            queue.put_nowait(log_entry)
+                        except asyncio.QueueFull:
+                            pass
+                except Exception:
+                    pass  # Ignore errors during emit
                     
         except Exception:
             self.handleError(record)
 
 
+def init_log_loop() -> None:
+    """Initialize the global event loop reference for the log handler."""
+    global _loop
+    try:
+        _loop = asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+
+
 def setup_log_streaming() -> None:
     """Set up the streaming log handler."""
+    global _loop
+    try:
+        _loop = asyncio.get_running_loop()
+    except RuntimeError:
+        pass  # No running loop yet
+
     # Create handler with formatter
     handler = StreamingLogHandler()
     handler.setFormatter(logging.Formatter("%(message)s"))
@@ -56,6 +95,14 @@ async def subscribe_logs() -> AsyncGenerator[dict, None]:
     Yields:
         Log entries as they are emitted.
     """
+    # Ensure loop is captured
+    global _loop
+    if _loop is None:
+        try:
+            _loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+
     queue: asyncio.Queue = asyncio.Queue(maxsize=50)
     _subscribers.append(queue)
     

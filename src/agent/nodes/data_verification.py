@@ -20,7 +20,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
         State update with verification results.
     """
     logger.info("============================================================")
-    logger.info("[Node: verify] Starting Data Verification")
+    logger.info("[Node: verify] Starting Data Verification", extra={"type": "status", "step": "data_verification", "status": "loading"})
     
     target_table = state.get("execution_target_table")
     if not target_table:
@@ -40,7 +40,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
         
         if result.success and isinstance(result.result, list) and len(result.result) > 0:
             count = result.result[0].get("cnt", 0)
-            logger.info(f"[Node: verify] ✓ Verification successful. Row count: {count}")
+            logger.info(f"[Node: verify] ✓ Verification successful. Row count: {count}", extra={"type": "status", "step": "data_verification", "status": "success"})
             return {
                 "data_verification_success": True,
                 "data_verification_result": {"row_count": count},
@@ -48,7 +48,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
             }
         else:
             error_msg = result.error_message or "Failed to get row count"
-            logger.error(f"[Node: verify] ✗ Verification failed: {error_msg}")
+            logger.error(f"[Node: verify] ✗ Verification failed: {error_msg}", extra={"type": "status", "step": "data_verification", "status": "error"})
             return {
                 "data_verification_success": False,
                 "data_verification_result": None,

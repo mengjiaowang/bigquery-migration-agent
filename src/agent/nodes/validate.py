@@ -27,7 +27,7 @@ def validate_node(state: AgentState) -> dict[str, Any]:
     attempt = len(state.get("conversion_history", [])) + 1
     
     logger.info("=" * 60)
-    logger.info(f"[Node: validate] Starting BigQuery SQL validation (attempt {attempt})")
+    logger.info(f"[Node: validate] Starting BigQuery SQL validation (attempt {attempt})", extra={"type": "status", "step": "bq_dry_run", "status": "loading", "attempt": attempt})
     logger.info(f"BigQuery SQL to validate:\n{state['bigquery_sql']}")
     
     result = validate_bigquery_sql(state["bigquery_sql"])
@@ -35,10 +35,10 @@ def validate_node(state: AgentState) -> dict[str, Any]:
     logger.info(f"[Node: validate] Validation mode: {result.validation_mode}")
     
     if result.success:
-        logger.info(f"[Node: validate] ✓ BigQuery SQL validation passed")
+        logger.info(f"[Node: validate] ✓ BigQuery SQL validation passed", extra={"type": "status", "step": "bq_dry_run", "status": "success"})
     else:
         logger.error("=" * 60)
-        logger.error(f"[Node: validate] ✗ BigQuery SQL validation FAILED (attempt {attempt})")
+        logger.error(f"[Node: validate] ✗ BigQuery SQL validation FAILED (attempt {attempt})", extra={"type": "status", "step": "bq_dry_run", "status": "error"})
         logger.error(f"[Node: validate] Error Details:")
         logger.error("-" * 40)
         # 打印完整的错误信息，每行都打印

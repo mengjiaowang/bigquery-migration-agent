@@ -59,7 +59,7 @@ def convert_node(state: AgentState) -> dict[str, Any]:
         Updated state with bigquery_sql.
     """
     logger.info("=" * 60)
-    logger.info("[Node: convert] Starting Spark to BigQuery conversion")
+    logger.info("[Node: convert] Starting Spark to BigQuery conversion", extra={"type": "status", "step": "convert", "status": "loading"})
     
     spark_sql = state['spark_sql']
     sql_length = len(spark_sql)
@@ -116,7 +116,7 @@ def convert_node(state: AgentState) -> dict[str, Any]:
     # (in case the LLM didn't apply all mappings correctly)
     bigquery_sql = table_mapping_service.replace_table_names(bigquery_sql)
     
-    logger.info(f"[Node: convert] Final BigQuery SQL ({len(bigquery_sql)} chars):\n{bigquery_sql}")
+    logger.info(f"[Node: convert] Final BigQuery SQL ({len(bigquery_sql)} chars):\n{bigquery_sql}", extra={"type": "status", "step": "convert", "status": "success"})
     
     return {
         "bigquery_sql": bigquery_sql,
