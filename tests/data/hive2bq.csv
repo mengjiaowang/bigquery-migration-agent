@@ -64,3 +64,5 @@ dw_htlbizdb.v_dim_traf_multi_masterhotel_df_sgp,trip-htl-bi-dbprj.htl_bi_webeye.
 di_dsjobdb.adm_ibu_overall_trend_analysis,trip-htl-bi-dbprj.htl_bi_webeye.adm_ibu_overall_trend_analysis,匹配成功
 dw_htlbizdb.cdm_traf_hs_ibu_user_seq_click_base_v4,trip-htl-bi-dbprj.htl_bi_webeye.cdm_traf_hs_ibu_user_seq_click_base_v4,匹配成功
 dw_htlbizdb.edw_traf_pt_fact_ibu_ubt_pageview,trip-htl-bi-dbprj.htl_bi_webeye.edw_traf_pt_fact_ibu_ubt_pageview,匹配成功
+abtest,da-agent-prototyping.firebase_gen.abtest,匹配成功
+original_target_table,da-agent-prototyping.migration_test.migration_target_table,匹配成功

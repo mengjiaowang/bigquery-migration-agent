@@ -9,11 +9,11 @@ class AgentState(TypedDict):
     """State for the Hive to BigQuery SQL conversion agent."""
     
     # Input
-    hive_sql: str
+    spark_sql: str
     
-    # Hive validation results
-    hive_valid: bool
-    hive_error: Optional[str]
+    # Spark validation results
+    spark_valid: bool
+    spark_error: Optional[str]
     
     # Conversion results
     bigquery_sql: Optional[str]
@@ -29,3 +29,14 @@ class AgentState(TypedDict):
     
     # Conversion history for iterative fixing
     conversion_history: list[ConversionHistory]
+    
+    # Execution results
+    execution_success: Optional[bool]
+    execution_result: Optional[list[dict] | str]
+    execution_target_table: Optional[str]
+    execution_error: Optional[str]
+
+    # Data Verification results
+    data_verification_success: Optional[bool]
+    data_verification_result: Optional[dict | str]
+    data_verification_error: Optional[str]

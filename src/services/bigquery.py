@@ -18,6 +18,16 @@ class DryRunResult:
     total_bytes_processed: Optional[int] = None
 
 
+@dataclass
+class ExecutionResult:
+    """Result of a BigQuery SQL execution."""
+    
+    success: bool
+    result: Optional[list[dict] | str] = None
+    target_table: Optional[str] = None
+    error_message: Optional[str] = None
+
+
 class BigQueryService:
     """Service for BigQuery operations including dry run validation."""
     
@@ -102,6 +112,57 @@ class BigQueryService:
             return DryRunResult(
                 success=False,
                 error_message=f"Unexpected error: {str(e)}"
+            )
+
+    def execute_query(self, sql: str, limit: int = 100) -> ExecutionResult:
+        """Execute BigQuery SQL and return results.
+        
+        Args:
+            sql: The BigQuery SQL statement to execute.
+            limit: Maximum number of rows to return.
+            
+        Returns:
+            ExecutionResult with success status, data/message, and error message.
+        """
+        try:
+            query_job = self.client.query(sql)
+            
+            # Wait for the query to complete
+            query_job.result()
+            
+            # Get destination table if available
+            target_table = None
+            if hasattr(query_job, 'destination') and query_job.destination:
+                target_table = f"{query_job.destination.project}.{query_job.destination.dataset_id}.{query_job.destination.table_id}"
+            
+            # Check statement type
+            if query_job.statement_type in ("INSERT", "UPDATE", "DELETE", "MERGE", "CREATE_TABLE", "CREATE_TABLE_AS_SELECT"):
+                # DML/DDL that doesn't return rows (usually)
+                num_dml_affected_rows = query_job.num_dml_affected_rows
+                message = f"Query executed successfully."
+                if num_dml_affected_rows is not None:
+                    message += f" Rows affected: {num_dml_affected_rows}"
+                
+                return ExecutionResult(
+                    success=True,
+                    result=message,
+                    target_table=target_table
+                )
+            else:
+                # SELECT or other query returning rows
+                rows = list(query_job.result(max_results=limit))
+                result_data = [dict(row) for row in rows]
+                
+                return ExecutionResult(
+                    success=True,
+                    result=result_data,
+                    target_table=target_table
+                )
+                
+        except Exception as e:
+            return ExecutionResult(
+                success=False,
+                error_message=str(e)
             )
     
     def close(self):

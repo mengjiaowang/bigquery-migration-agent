@@ -7,7 +7,7 @@ from typing import Union
 
 import google.auth
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
@@ -41,14 +41,14 @@ def get_llm_provider() -> LLMProvider:
         )
 
 
-def get_gemini_llm() -> ChatVertexAI:
+def get_gemini_llm() -> ChatGoogleGenerativeAI:
     """Get Google Gemini LLM instance via Vertex AI.
     
     Uses Application Default Credentials (ADC) for authentication.
     Run 'gcloud auth application-default login' to set up local credentials.
     
     Returns:
-        ChatVertexAI instance.
+        ChatGoogleGenerativeAI instance.
         
     Raises:
         ValueError: If project ID cannot be determined.
@@ -69,11 +69,12 @@ def get_gemini_llm() -> ChatVertexAI:
     
     logger.info(f"[LLM] Using Vertex AI - Project: {project_id}, Location: {location}, Model: {model}")
     
-    return ChatVertexAI(
+    return ChatGoogleGenerativeAI(
         model=model,
         project=project_id,
         location=location,
         temperature=0.1,
+        vertexai=True,
     )
 
 

@@ -1,9 +1,9 @@
 """Prompt templates for Hive to BigQuery SQL conversion."""
 
-HIVE_VALIDATION_PROMPT = """You are a Hive SQL syntax expert. Validate if the following SQL is valid Hive SQL syntax.
+SPARK_VALIDATION_PROMPT = """You are a Spark SQL syntax expert. Validate if the following SQL is valid Spark SQL syntax.
 
 ```sql
-{hive_sql}
+{spark_sql}
 ```
 
 Respond in JSON format only:
@@ -12,7 +12,7 @@ Respond in JSON format only:
     "error": "error message if invalid, null if valid"
 }}
 
-Hive SQL features to consider:
+Spark SQL features to consider:
 - Data types: STRING, INT, BIGINT, FLOAT, DOUBLE, BOOLEAN, TIMESTAMP, DATE, ARRAY, MAP, STRUCT
 - Functions: date_format, datediff, date_add, date_sub, from_unixtime, unix_timestamp, nvl, concat_ws, collect_list, collect_set, get_json_object
 - Syntax: LATERAL VIEW, EXPLODE, POSEXPLODE, DISTRIBUTE BY, CLUSTER BY, SORT BY, GROUPING SETS
@@ -21,12 +21,12 @@ Hive SQL features to consider:
 
 **IMPORTANT - Scheduling System Parameters:**
 The SQL may contain scheduling system macros/variables. These are VALID and should NOT be treated as errors:
-- `set hivevar:var_name=${{...}};` - Variable definition statements
+- `set sparkvar:var_name=${{...}};` - Variable definition statements
 - `${{zdt.format("yyyy-MM-dd")}}` - Date formatting macro
 - `${{zdt.addDay(-1).format("yyyyMMdd")}}` - Date calculation macro
 - `${{zdt.add(10,-1).format("HH")}}` - Time calculation macro
 - `${{zdt.addMonth(-1).format("yyyy-MM")}}` - Month calculation macro
-- `${{hivevar:var_name}}` - Variable reference
+- `${{sparkvar:var_name}}` - Variable reference
 - `${{var_name}}` - Simple variable reference
 - String concatenation in variable values like `${{...}}_suffix`
 
@@ -35,11 +35,11 @@ These macros are runtime placeholders from the scheduling system. Treat them as 
 Be strict on syntax, permissive on semantics (don't check if tables exist).
 """
 
-HIVE_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Hive SQL to functionally equivalent BigQuery SQL.
+SPARK_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Spark SQL to functionally equivalent BigQuery SQL.
 
-## Input Hive SQL:
+## Input Spark SQL:
 ```sql
-{hive_sql}
+{spark_sql}
 ```
 
 {table_mapping_info}
@@ -49,7 +49,7 @@ HIVE_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Hive SQL 
 ## Conversion Rules:
 
 ### 1. Data Types
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | STRING | STRING |
 | INT, SMALLINT, TINYINT | INT64 |
@@ -65,7 +65,7 @@ HIVE_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Hive SQL 
 | STRUCT<...> | STRUCT<...> |
 
 ### 2. Date/Time Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | date_format(date, 'yyyy-MM-dd') | FORMAT_DATE('%Y-%m-%d', date) |
 | date_format(date, 'yyyy-MM-dd HH:mm:ss') | FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S', ts) |
@@ -94,7 +94,7 @@ HIVE_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Hive SQL 
 | trunc(date, 'YYYY') | DATE_TRUNC(date, YEAR) |
 
 ### 3. String Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | concat(a, b, ...) | CONCAT(a, b, ...) |
 | concat_ws(sep, a, b, ...) | ARRAY_TO_STRING([a, b, ...], sep) |
@@ -139,7 +139,7 @@ HIVE_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Hive SQL 
 | stddev_samp(col) | STDDEV_SAMP(col) |
 
 ### 5. Conditional & NULL Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | nvl(a, b) | IFNULL(a, b) or COALESCE(a, b) |
 | nvl2(expr, val1, val2) | IF(expr IS NOT NULL, val1, val2) |
@@ -252,8 +252,8 @@ CREATE TABLE `t` (...) PARTITION BY dt
 #### 11.1 DDL with Dynamic Table Names (MUST use EXECUTE IMMEDIATE)
 When DDL target table name contains variables, you MUST use EXECUTE IMMEDIATE:
 ```sql
--- Hive:
-INSERT OVERWRITE TABLE db.result_${{hivevar:date_suffix}} SELECT ...
+-- Spark:
+INSERT OVERWRITE TABLE db.result_${{sparkvar:date_suffix}} SELECT ...
 
 -- BigQuery (WRONG - wildcard not allowed in DDL):
 CREATE OR REPLACE TABLE `project.dataset.result_*` AS SELECT ...  -- ❌ INVALID!
@@ -273,8 +273,8 @@ SELECT * FROM `project.dataset.events_*`
 WHERE _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', CURRENT_DATE())
 ```
 
-### 12. Hive-Specific Syntax to Remove/Convert
-| Hive | BigQuery |
+### 12. Spark-Specific Syntax to Remove/Convert
+| Spark | BigQuery |
 |------|----------|
 | DISTRIBUTE BY col | (remove - BQ handles automatically) |
 | CLUSTER BY col | (remove or use ORDER BY) |
@@ -287,19 +287,19 @@ WHERE _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', CURRENT_DATE())
 
 ### 13. Table References
 - Use backticks for BigQuery table names: `project.dataset.table`
-- Apply the table mapping provided above to replace Hive table names
+- Apply the table mapping provided above to replace Spark table names
 
-### 14. Hive Variable Conversion to BigQuery Scripting - CRITICAL
+### 14. Spark Variable Conversion to BigQuery Scripting - CRITICAL
 
-#### 14.1 SET hivevar Statements
-Convert Hive variable definitions to BigQuery DECLARE/SET:
+#### 14.1 SET sparkvar Statements
+Convert Spark variable definitions to BigQuery DECLARE/SET:
 ```sql
--- Hive:
-set hivevar:start_date=${{zdt.addDay(-7).format("yyyy-MM-dd")}};
-set hivevar:end_date=${{zdt.format("yyyy-MM-dd")}};
-set hivevar:table_suffix=${{zdt.addDay(-1).format("yyyyMMdd")}};
-set hivevar:date_app=${{zdt.addDay(-1).format("yyyyMMdd")}}_test;  -- with suffix
-set hivevar:month_start=${{zdt.format("yyyy-MM")}}-01;  -- month start date
+-- Spark:
+set sparkvar:start_date=${{zdt.addDay(-7).format("yyyy-MM-dd")}};
+set sparkvar:end_date=${{zdt.format("yyyy-MM-dd")}};
+set sparkvar:table_suffix=${{zdt.addDay(-1).format("yyyyMMdd")}};
+set sparkvar:date_app=${{zdt.addDay(-1).format("yyyyMMdd")}}_test;  -- with suffix
+set sparkvar:month_start=${{zdt.format("yyyy-MM")}}-01;  -- month start date
 
 -- BigQuery:
 DECLARE start_date DATE DEFAULT DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY);
@@ -310,7 +310,7 @@ DECLARE month_start DATE DEFAULT DATE_TRUNC(CURRENT_DATE(), MONTH);  -- first da
 ```
 
 #### 14.2 Scheduling Parameter Mappings
-| Hive Scheduling Param | BigQuery Equivalent |
+| Spark Scheduling Param | BigQuery Equivalent |
 |----------------------|---------------------|
 | `${{zdt.format("yyyy-MM-dd")}}` | `CURRENT_DATE()` |
 | `${{zdt.format("yyyyMMdd")}}` | `FORMAT_DATE('%Y%m%d', CURRENT_DATE())` |
@@ -328,8 +328,8 @@ DECLARE month_start DATE DEFAULT DATE_TRUNC(CURRENT_DATE(), MONTH);  -- first da
 #### 14.3 Using Variables in WHERE Clauses
 When `${{var}}` is used for filtering values, replace with variable name directly (no quotes):
 ```sql
--- Hive:
-WHERE dt = '${{hivevar:start_date}}'
+-- Spark:
+WHERE dt = '${{sparkvar:start_date}}'
 WHERE d = '${{zdt.format("yyyy-MM-dd")}}'
 
 -- BigQuery:
@@ -346,7 +346,7 @@ When `${{var}}` constructs table names dynamically:
 
 **Option A: Wildcard Tables (SELECT only, NOT for DDL!)**
 ```sql
--- Hive:
+-- Spark:
 SELECT * FROM db.table_${{zdt.format("yyyyMMdd")}}
 
 -- BigQuery (OK for SELECT):
@@ -365,10 +365,10 @@ EXECUTE IMMEDIATE query USING DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) AS dt;
 
 #### 14.5 Complete Conversion Example
 ```sql
--- Hive:
-set hivevar:dt=${{zdt.addDay(-1).format("yyyy-MM-dd")}};
-set hivevar:suffix=${{zdt.addDay(-1).format("yyyyMMdd")}};
-SELECT * FROM db.events_${{hivevar:suffix}} WHERE dt = '${{hivevar:dt}}';
+-- Spark:
+set sparkvar:dt=${{zdt.addDay(-1).format("yyyy-MM-dd")}};
+set sparkvar:suffix=${{zdt.addDay(-1).format("yyyyMMdd")}};
+SELECT * FROM db.events_${{sparkvar:suffix}} WHERE dt = '${{sparkvar:dt}}';
 
 -- BigQuery:
 DECLARE dt DATE DEFAULT DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY);
@@ -381,10 +381,10 @@ WHERE _TABLE_SUFFIX = suffix AND dt = dt;
 #### 14.6 DDL with Dynamic Table Names (MUST use EXECUTE IMMEDIATE)
 **Note: DDL statements (CREATE TABLE, INSERT INTO) do NOT support wildcard `*`!**
 ```sql
--- Hive:
-set hivevar:date_app=${{zdt.addDay(-1).format("yyyyMMdd")}}_test;
-INSERT OVERWRITE TABLE db.result_${{hivevar:date_app}}
-SELECT * FROM db.source WHERE dt = '${{hivevar:date_app}}';
+-- Spark:
+set sparkvar:date_app=${{zdt.addDay(-1).format("yyyyMMdd")}}_test;
+INSERT OVERWRITE TABLE db.result_${{sparkvar:date_app}}
+SELECT * FROM db.source WHERE dt = '${{sparkvar:date_app}}';
 
 -- BigQuery (WRONG - this will fail!):
 CREATE OR REPLACE TABLE `project.dataset.result_*` AS ...  -- ❌ INVALID!
@@ -449,9 +449,9 @@ Be permissive on: table existence, column names, custom UDFs.
 
 FIX_BIGQUERY_PROMPT = """You are an expert BigQuery SQL debugger. Fix the BigQuery SQL based on the error.
 
-## Original Hive SQL:
+## Original Spark SQL:
 ```sql
-{hive_sql}
+{spark_sql}
 ```
 
 ## Current BigQuery SQL (has error):

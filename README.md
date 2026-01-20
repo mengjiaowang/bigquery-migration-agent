@@ -1,11 +1,11 @@
-# Hive to BigQuery SQL Converter
+# Spark to BigQuery SQL Converter
 
-使用 LangGraph 构建的 Hive SQL 到 BigQuery SQL 转换服务，支持 Google Gemini 和 OpenAI 两种 LLM 提供商。
+使用 LangGraph 构建的 Spark SQL 到 BigQuery SQL 转换服务，支持 Google Gemini 和 OpenAI 两种 LLM 提供商。
 
 ## 功能特性
 
-- **Hive SQL 验证**: 使用 LLM 验证输入的 Hive SQL 语法是否正确
-- **智能转换**: 将 Hive SQL 转换为 BigQuery SQL，处理函数、数据类型和语法差异
+- **Spark SQL 验证**: 使用 LLM 验证输入的 Spark SQL 语法是否正确
+- **智能转换**: 将 Spark SQL 转换为 BigQuery SQL，处理函数、数据类型和语法差异
 - **可配置的 BigQuery 验证**: 支持两种验证模式
   - **Dry Run 模式**: 使用 BigQuery API 进行真实验证
   - **LLM 模式**: 使用 LLM 提示词进行语法校验（无需 GCP 配置）
@@ -108,7 +108,7 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 curl -X POST http://localhost:8000/convert \
   -H "Content-Type: application/json" \
   -d '{
-    "hive_sql": "SELECT date_format(dt, \"yyyy-MM-dd\") as formatted_date, collect_list(name) as names FROM my_table GROUP BY dt"
+    "spark_sql": "SELECT date_format(dt, \"yyyy-MM-dd\") as formatted_date, collect_list(name) as names FROM my_table GROUP BY dt"
   }'
 ```
 
@@ -117,9 +117,9 @@ curl -X POST http://localhost:8000/convert \
 ```json
 {
   "success": true,
-  "hive_sql": "SELECT date_format(dt, \"yyyy-MM-dd\") as formatted_date, collect_list(name) as names FROM my_table GROUP BY dt",
-  "hive_valid": true,
-  "hive_error": null,
+  "spark_sql": "SELECT date_format(dt, \"yyyy-MM-dd\") as formatted_date, collect_list(name) as names FROM my_table GROUP BY dt",
+  "spark_valid": true,
+  "spark_error": null,
   "bigquery_sql": "SELECT FORMAT_DATE('%Y-%m-%d', dt) as formatted_date, ARRAY_AGG(name) as names FROM my_table GROUP BY dt",
   "validation_success": true,
   "validation_error": null,
@@ -133,11 +133,11 @@ curl -X POST http://localhost:8000/convert \
 ## 工作流程
 
 ```
-Input Hive SQL
+Input Spark SQL
       │
       ▼
 ┌─────────────────┐
-│ Validate Hive   │──── Invalid ────► Return Error
+│ Validate Spark  │──── Invalid ────► Return Error
 │     SQL         │
 └────────┬────────┘
          │ Valid
@@ -148,23 +148,21 @@ Input Hive SQL
 └────────┬────────┘
          │
          ▼
+┌─────────────────┐◄─────────────────────────┐
+│ Validate BQ SQL │  Fix Loop (Max 3)        │
+│ (dry_run/llm)   │─────── Failed ─────────►┌┴──────────────┐
+└────────┬────────┘                         │ Fix SQL with  │
+         │ Success                          │ Error Info    │
+         ▼                                  └───────────────┘
 ┌─────────────────┐
-│ Validate BQ SQL │──── Success ────► Return Result
-│ (dry_run/llm)   │
-└────────┬────────┘
-         │ Failed
-         ▼
-┌─────────────────┐
-│ Retry < 3?      │──── No ────► Return with Warning
-└────────┬────────┘
-         │ Yes
-         ▼
-┌─────────────────┐
-│ Fix SQL with    │
-│ Error Info      │
+│ Execute BQ SQL  │
 └────────┬────────┘
          │
-         └──────────► Back to Validate
+         ▼
+┌─────────────────┐
+│ Verify Data     │────► Return Result
+└─────────────────┘
+
 ```
 
 ### 验证模式说明
@@ -176,7 +174,7 @@ Input Hive SQL
 
 ### 数据类型映射
 
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | STRING | STRING |
 | INT | INT64 |
@@ -190,7 +188,7 @@ Input Hive SQL
 
 ### 常用函数转换
 
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | `date_format(date, 'yyyy-MM-dd')` | `FORMAT_DATE('%Y-%m-%d', date)` |
 | `datediff(end, start)` | `DATE_DIFF(end, start, DAY)` |

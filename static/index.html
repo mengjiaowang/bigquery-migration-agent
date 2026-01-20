@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hive → BigQuery SQL 转换器</title>
+    <title>Spark → BigQuery SQL 转换器</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -166,7 +166,7 @@
             font-size: 1rem;
         }
 
-        .panel-title-icon.hive {
+        .panel-title-icon.spark {
             background: linear-gradient(135deg, #ffcc00, #ff9900);
         }
 
@@ -302,7 +302,8 @@
         }
 
         /* Info Panel */
-        .info-panel {
+        .info-panel,
+        .status-panel {
             grid-column: 1 / -1;
         }
 
@@ -442,7 +443,7 @@
                 <div class="logo-icon">🔄</div>
                 <div class="logo-text">
                     <h1>SQL Transformer</h1>
-                    <span>Hive → BigQuery 智能转换</span>
+                    <span>Spark → BigQuery 智能转换</span>
                 </div>
             </div>
             <div class="status-badge">
@@ -453,12 +454,42 @@
     </header>
 
     <main class="container">
+        <!-- Status Panel -->
+        <div class="panel status-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <div class="panel-title-icon" style="background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));">🚦</div>
+                    <span>执行状态</span>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="status-cards" style="margin-bottom: 0;">
+                    <div class="status-card">
+                        <div class="status-card-label">Spark SQL 证</div>
+                        <div class="status-card-value pending" id="sparkStatus">-</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-card-label">BQ Dry Run 验证</div>
+                        <div class="status-card-value pending" id="bqStatus">-</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-card-label">BQ 执行结果</div>
+                        <div class="status-card-value pending" id="executionStatus">-</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-card-label">数据对比验证</div>
+                        <div class="status-card-value pending" id="dataVerificationStatus">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Input Panel -->
         <div class="panel">
             <div class="panel-header">
                 <div class="panel-title">
-                    <div class="panel-title-icon hive">🐝</div>
-                    <span>Hive SQL 输入</span>
+                    <div class="panel-title-icon spark">💥</div>
+                    <span>Spark SQL 输入</span>
                 </div>
                 <button class="copy-btn" onclick="clearInput()">清空</button>
             </div>
@@ -466,8 +497,8 @@
                 <div class="code-editor">
                     <textarea 
                         class="code-textarea" 
-                        id="hiveSql" 
-                        placeholder="在此输入 Hive SQL 语句...
+                        id="sparkSql" 
+                        placeholder="在此输入 Spark SQL 语句...
 
 示例:
 SELECT 
@@ -504,24 +535,6 @@ GROUP BY user_id"
                 </div>
             </div>
             <div class="panel-body">
-                <div class="status-cards">
-                    <div class="status-card">
-                        <div class="status-card-label">Hive 验证</div>
-                        <div class="status-card-value pending" id="hiveStatus">-</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="status-card-label">BQ 验证</div>
-                        <div class="status-card-value pending" id="bqStatus">-</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="status-card-label">重试次数</div>
-                        <div class="status-card-value pending" id="retryCount">-</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="status-card-label">验证模式</div>
-                        <div class="status-card-value pending" id="validationMode">-</div>
-                    </div>
-                </div>
                 <div class="code-editor">
                     <div class="code-output" id="bqOutput">
                         <div class="empty-state">
@@ -637,7 +650,7 @@ GROUP BY user_id"
 
         // Clear input
         function clearInput() {
-            document.getElementById('hiveSql').value = '';
+            document.getElementById('sparkSql').value = '';
             addLog('info', '已清空输入');
         }
 
@@ -668,7 +681,7 @@ FROM daily_orders
 GROUP BY customer_id
 ORDER BY avg_daily_spend DESC
 LIMIT 100`;
-            document.getElementById('hiveSql').value = sampleSql;
+            document.getElementById('sparkSql').value = sampleSql;
             addLog('info', '已加载示例 SQL');
         }
 
@@ -686,31 +699,42 @@ LIMIT 100`;
 
         // Update result cards
         function updateResultCards(result) {
-            const hiveStatus = document.getElementById('hiveStatus');
+            const sparkStatus = document.getElementById('sparkStatus');
             const bqStatus = document.getElementById('bqStatus');
-            const retryCount = document.getElementById('retryCount');
-            const validationMode = document.getElementById('validationMode');
-
-            hiveStatus.textContent = result.hive_valid ? '✓ 通过' : '✗ 失败';
-            hiveStatus.className = 'status-card-value ' + (result.hive_valid ? 'success' : 'error');
+            sparkStatus.textContent = result.spark_valid ? '✓ 通过' : '✗ 失败';
+            sparkStatus.className = 'status-card-value ' + (result.spark_valid ? 'success' : 'error');
 
             bqStatus.textContent = result.validation_success ? '✓ 通过' : '✗ 失败';
             bqStatus.className = 'status-card-value ' + (result.validation_success ? 'success' : 'error');
 
-            retryCount.textContent = result.retry_count;
-            retryCount.className = 'status-card-value';
+            const executionStatus = document.getElementById('executionStatus');
+            if (result.execution_success !== undefined && result.execution_success !== null) {
+                executionStatus.textContent = result.execution_success ? '✓ 成功' : '✗ 失败';
+                executionStatus.className = 'status-card-value ' + (result.execution_success ? 'success' : 'error');
+                
+                // If we have a target table, we could show it too, maybe in tooltip or log
+            } else {
+                executionStatus.textContent = '-';
+                executionStatus.className = 'status-card-value pending';
+            }
 
-            validationMode.textContent = result.validation_mode || '-';
-            validationMode.className = 'status-card-value';
+            const dataVerificationStatus = document.getElementById('dataVerificationStatus');
+            if (result.data_verification_success !== undefined && result.data_verification_success !== null) {
+                dataVerificationStatus.textContent = result.data_verification_success ? '✓ 通过' : '✗ 失败';
+                dataVerificationStatus.className = 'status-card-value ' + (result.data_verification_success ? 'success' : 'error');
+            } else {
+                dataVerificationStatus.textContent = '-';
+                dataVerificationStatus.className = 'status-card-value pending';
+            }
         }
 
         // Convert SQL
         async function convertSql() {
             if (isConverting) return;
 
-            const hiveSql = document.getElementById('hiveSql').value.trim();
-            if (!hiveSql) {
-                addLog('warning', '请输入 Hive SQL');
+            const sparkSql = document.getElementById('sparkSql').value.trim();
+            if (!sparkSql) {
+                addLog('warning', '请输入 Spark SQL');
                 return;
             }
 
@@ -729,7 +753,7 @@ LIMIT 100`;
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ hive_sql: hiveSql }),
+                    body: JSON.stringify({ spark_sql: sparkSql }),
                 });
 
                 const result = await response.json();
@@ -740,7 +764,7 @@ LIMIT 100`;
                 // 存储转换结果
                 lastConversionResult = {
                     ...result,
-                    hive_sql: hiveSql,
+                    spark_sql: sparkSql,
                     conversion_time: new Date().toISOString(),
                     duration: duration
                 };
@@ -763,6 +787,26 @@ LIMIT 100`;
 
                 if (result.success) {
                     addLog('success', '🎉 转换完全成功!');
+                }
+                
+                if (result.execution_success) {
+                    let msg = '🚀 SQL 执行成功';
+                    if (result.execution_target_table) {
+                        msg += ` | 目标表: ${result.execution_target_table}`;
+                    }
+                    addLog('success', msg);
+                } else if (result.execution_error) {
+                    addLog('error', `SQL 执行失败: ${result.execution_error}`);
+                }
+                
+                if (result.data_verification_success) {
+                    let msg = '🔎 数据验证通过';
+                    if (result.data_verification_result && result.data_verification_result.row_count !== undefined) {
+                        msg += ` | 行数: ${result.data_verification_result.row_count}`;
+                    }
+                    addLog('success', msg);
+                } else if (result.data_verification_error) {
+                    addLog('error', `数据验证失败: ${result.data_verification_error}`);
                 }
 
             } catch (error) {

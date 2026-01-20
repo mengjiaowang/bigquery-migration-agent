@@ -1,4 +1,4 @@
-"""Table mapping service for Hive to BigQuery table name conversion."""
+"""Table mapping service for Spark to BigQuery table name conversion."""
 
 import csv
 import logging
@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 class TableMapping:
     """Represents a Hive to BigQuery table mapping."""
     
-    hive_table: str
+    spark_table: str
     bigquery_table: str
     note: Optional[str] = None
 
 
 class TableMappingService:
-    """Service for managing Hive to BigQuery table name mappings."""
+    """Service for managing Spark to BigQuery table name mappings."""
     
     _instance: Optional["TableMappingService"] = None
     _mappings: dict[str, str] = {}
@@ -64,7 +64,7 @@ class TableMappingService:
                     
                     # Skip empty mappings or "无" entries
                     if hive_table and bq_table and bq_table != "无":
-                        # Normalize hive table name to lowercase for case-insensitive matching
+                        # Normalize spark table name to lowercase for case-insensitive matching
                         self._mappings[hive_table.lower()] = bq_table
                         
             logger.info(f"Loaded {len(self._mappings)} table mappings from {csv_path}")
@@ -73,32 +73,32 @@ class TableMappingService:
         except Exception as e:
             logger.error(f"Failed to load table mappings: {e}")
     
-    def get_bigquery_table(self, hive_table: str) -> Optional[str]:
-        """Get the BigQuery table name for a Hive table.
+    def get_bigquery_table(self, spark_table: str) -> Optional[str]:
+        """Get the BigQuery table name for a Spark table.
         
         Args:
-            hive_table: The Hive table name (e.g., "dim_hoteldb.dimhotel").
+            spark_table: The Spark table name (e.g., "dim_hoteldb.dimhotel").
             
         Returns:
             The mapped BigQuery table name, or None if not found.
         """
         # Normalize to lowercase for case-insensitive matching
-        normalized = hive_table.lower().strip()
+        normalized = spark_table.lower().strip()
         return self._mappings.get(normalized)
     
     def get_all_mappings(self) -> dict[str, str]:
         """Get all table mappings.
         
         Returns:
-            Dictionary of Hive table names to BigQuery table names.
+            Dictionary of Spark table names to BigQuery table names.
         """
         return self._mappings.copy()
     
     def replace_table_names(self, sql: str) -> str:
-        """Replace all Hive table names in SQL with BigQuery table names.
+        """Replace all Spark table names in SQL with BigQuery table names.
         
         Args:
-            sql: The SQL statement with Hive table names.
+            sql: The SQL statement with Spark table names.
             
         Returns:
             SQL statement with BigQuery table names.
@@ -112,20 +112,20 @@ class TableMappingService:
             reverse=True
         )
         
-        for hive_table, bq_table in sorted_mappings:
+        for spark_table, bq_table in sorted_mappings:
             # Create pattern that matches the table name with word boundaries
             # Handle both `table` and table formats
             # Match: FROM/JOIN/INTO table_name, or `table_name`
             patterns = [
                 # Match backtick-quoted table names
-                (rf'`{re.escape(hive_table)}`', f'`{bq_table}`'),
+                (rf'`{re.escape(spark_table)}`', f'`{bq_table}`'),
                 # Match unquoted table names with word boundaries
                 # This pattern matches table names after FROM, JOIN, INTO, UPDATE, TABLE keywords
-                (rf'(?i)(?<=\bFROM\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
-                (rf'(?i)(?<=\bJOIN\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
-                (rf'(?i)(?<=\bINTO\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
-                (rf'(?i)(?<=\bUPDATE\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
-                (rf'(?i)(?<=\bTABLE\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
+                (rf'(?i)(?<=\bFROM\s)({re.escape(spark_table)})(?=\s|$|,|\))', bq_table),
+                (rf'(?i)(?<=\bJOIN\s)({re.escape(spark_table)})(?=\s|$|,|\))', bq_table),
+                (rf'(?i)(?<=\bINTO\s)({re.escape(spark_table)})(?=\s|$|,|\))', bq_table),
+                (rf'(?i)(?<=\bUPDATE\s)({re.escape(spark_table)})(?=\s|$|,|\))', bq_table),
+                (rf'(?i)(?<=\bTABLE\s)({re.escape(spark_table)})(?=\s|$|,|\))', bq_table),
             ]
             
             for pattern, replacement in patterns:
@@ -142,9 +142,9 @@ class TableMappingService:
         if not self._mappings:
             return "No table mappings available."
         
-        lines = ["## Table Name Mappings (Hive → BigQuery):"]
-        for hive_table, bq_table in sorted(self._mappings.items()):
-            lines.append(f"- {hive_table} → `{bq_table}`")
+        lines = ["## Table Name Mappings (Spark → BigQuery):"]
+        for spark_table, bq_table in sorted(self._mappings.items()):
+            lines.append(f"- {spark_table} → `{bq_table}`")
         
         return "\n".join(lines)
 

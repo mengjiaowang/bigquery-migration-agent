@@ -10,6 +10,7 @@ from typing import Optional
 from src.prompts.templates import BIGQUERY_VALIDATION_PROMPT
 from src.services.bigquery import BigQueryService, DryRunResult
 from src.services.llm import get_llm
+from src.services.utils import get_content_text
 
 
 class ValidationMode(str, Enum):
@@ -161,7 +162,7 @@ def validate_with_llm(sql: str) -> ValidationResult:
     
     try:
         # Clean up response - remove markdown code blocks if present
-        response_text = response.content.strip()
+        response_text = get_content_text(response.content).strip()
         if response_text.startswith("```"):
             lines = response_text.split("\n")
             response_text = "\n".join(lines[1:-1])

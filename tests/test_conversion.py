@@ -1,7 +1,7 @@
 """
-Hive to BigQuery SQL Conversion Test Script
+Spark to BigQuery SQL Conversion Test Script
 
-This script tests the conversion capability with various complex Hive SQL scenarios.
+This script tests the conversion capability with various complex Spark SQL scenarios.
 Run with: python -m tests.test_conversion
 """
 
@@ -22,7 +22,7 @@ class TestCase:
     """Test case definition."""
     name: str
     description: str
-    hive_sql: str
+    spark_sql: str
     expected_keywords: list[str]  # Keywords expected in the converted BigQuery SQL
 
 
@@ -34,7 +34,7 @@ TEST_CASES = [
     TestCase(
         name="basic_select",
         description="基础 SELECT 查询",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 id,
                 name,
@@ -51,7 +51,7 @@ TEST_CASES = [
     TestCase(
         name="data_type_cast",
         description="数据类型转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 CAST(id AS STRING) as id_str,
                 CAST(amount AS DOUBLE) as amount_double,
@@ -68,7 +68,7 @@ TEST_CASES = [
     TestCase(
         name="date_functions",
         description="日期函数转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 date_format(create_time, 'yyyy-MM-dd') as formatted_date,
                 date_format(create_time, 'yyyy-MM-dd HH:mm:ss') as formatted_datetime,
@@ -84,7 +84,7 @@ TEST_CASES = [
     TestCase(
         name="unix_timestamp_functions",
         description="Unix 时间戳函数",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 from_unixtime(ts) as timestamp_from_unix,
                 from_unixtime(ts, 'yyyy-MM-dd') as date_from_unix,
@@ -101,7 +101,7 @@ TEST_CASES = [
     TestCase(
         name="string_functions",
         description="字符串函数转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 concat(first_name, ' ', last_name) as full_name,
                 concat_ws(',', col1, col2, col3) as combined,
@@ -122,7 +122,7 @@ TEST_CASES = [
     TestCase(
         name="regex_functions",
         description="正则表达式函数",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 regexp_extract(url, 'https?://([^/]+)', 1) as domain,
                 regexp_replace(phone, '[^0-9]', '') as clean_phone,
@@ -138,7 +138,7 @@ TEST_CASES = [
     TestCase(
         name="aggregate_functions",
         description="聚合函数转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 department,
                 COUNT(*) as total_count,
@@ -158,7 +158,7 @@ TEST_CASES = [
     TestCase(
         name="percentile_functions",
         description="百分位数函数",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 category,
                 percentile_approx(price, 0.5) as median_price,
@@ -175,7 +175,7 @@ TEST_CASES = [
     TestCase(
         name="window_functions",
         description="窗口函数转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 employee_id,
                 department,
@@ -197,7 +197,7 @@ TEST_CASES = [
     TestCase(
         name="lateral_view_explode",
         description="LATERAL VIEW EXPLODE 转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 order_id,
                 item
@@ -210,7 +210,7 @@ TEST_CASES = [
     TestCase(
         name="lateral_view_posexplode",
         description="LATERAL VIEW POSEXPLODE 转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 order_id,
                 pos,
@@ -224,7 +224,7 @@ TEST_CASES = [
     TestCase(
         name="multiple_lateral_view",
         description="多重 LATERAL VIEW",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 user_id,
                 tag,
@@ -242,7 +242,7 @@ TEST_CASES = [
     TestCase(
         name="json_functions",
         description="JSON 函数转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 get_json_object(json_data, '$.name') as name,
                 get_json_object(json_data, '$.address.city') as city,
@@ -258,7 +258,7 @@ TEST_CASES = [
     TestCase(
         name="null_handling",
         description="NULL 值处理函数",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 nvl(name, 'Unknown') as name_with_default,
                 coalesce(phone, mobile, 'N/A') as contact,
@@ -279,7 +279,7 @@ TEST_CASES = [
     TestCase(
         name="complex_joins",
         description="复杂 JOIN 操作",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 o.order_id,
                 o.order_date,
@@ -302,7 +302,7 @@ TEST_CASES = [
     TestCase(
         name="subquery",
         description="子查询",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 department,
                 avg_salary
@@ -321,7 +321,7 @@ TEST_CASES = [
     TestCase(
         name="cte_query",
         description="CTE (WITH 子句)",
-        hive_sql="""
+        spark_sql="""
             WITH dept_stats AS (
                 SELECT 
                     department,
@@ -352,7 +352,7 @@ TEST_CASES = [
     TestCase(
         name="union_operations",
         description="UNION 操作",
-        hive_sql="""
+        spark_sql="""
             SELECT id, name, 'employee' as type FROM employees
             UNION ALL
             SELECT id, name, 'contractor' as type FROM contractors
@@ -368,7 +368,7 @@ TEST_CASES = [
     TestCase(
         name="math_functions",
         description="数学函数转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 abs(amount) as abs_amount,
                 ceil(price) as ceil_price,
@@ -393,7 +393,7 @@ TEST_CASES = [
     TestCase(
         name="array_functions",
         description="数组函数转换",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 size(items) as item_count,
                 array_contains(tags, 'featured') as is_featured,
@@ -404,12 +404,12 @@ TEST_CASES = [
     ),
     
     # ============================================================
-    # 14. Hive 特有语法
+    # 14. Spark 特有语法
     # ============================================================
     TestCase(
-        name="hive_specific_syntax",
-        description="Hive 特有语法（应被移除或转换）",
-        hive_sql="""
+        name="spark_specific_syntax",
+        description="Spark 特有语法（应被移除或转换）",
+        spark_sql="""
             SELECT 
                 user_id,
                 event_type,
@@ -429,7 +429,7 @@ TEST_CASES = [
     TestCase(
         name="complex_analytics_query",
         description="复杂分析查询",
-        hive_sql="""
+        spark_sql="""
             WITH daily_sales AS (
                 SELECT 
                     to_date(order_time) as order_date,
@@ -465,7 +465,7 @@ TEST_CASES = [
     TestCase(
         name="complex_user_behavior_analysis",
         description="用户行为分析复杂查询",
-        hive_sql="""
+        spark_sql="""
             SELECT 
                 user_id,
                 session_id,
@@ -496,27 +496,29 @@ def run_test(base_url: str, test_case: TestCase) -> dict:
     print(f"Description: {test_case.description}")
     print(f"{'='*60}")
     
-    print("\n[Input Hive SQL]")
-    print(test_case.hive_sql.strip())
+    print(f"{'='*60}")
+    
+    print("\n[Input Spark SQL]")
+    print(test_case.spark_sql.strip())
     
     try:
         response = requests.post(
             f"{base_url}/convert",
-            json={"hive_sql": test_case.hive_sql},
+            json={"spark_sql": test_case.spark_sql},
             timeout=120
         )
         result = response.json()
         
         print(f"\n[Conversion Result]")
         print(f"Success: {result.get('success')}")
-        print(f"Hive Valid: {result.get('hive_valid')}")
+        print(f"Spark Valid: {result.get('spark_valid')}")
         print(f"Validation Success: {result.get('validation_success')}")
         print(f"Validation Mode: {result.get('validation_mode')}")
         print(f"Retry Count: {result.get('retry_count')}")
         
-        if result.get('hive_error'):
-            print(f"\n[Hive Error]")
-            print(result['hive_error'])
+        if result.get('spark_error'):
+            print(f"\n[Spark Error]")
+            print(result['spark_error'])
         
         if result.get('bigquery_sql'):
             print(f"\n[Converted BigQuery SQL]")
@@ -549,10 +551,10 @@ def run_test(base_url: str, test_case: TestCase) -> dict:
         return {
             "name": test_case.name,
             "success": result.get('success', False),
-            "hive_valid": result.get('hive_valid', False),
+            "spark_valid": result.get('spark_valid', False),
             "validation_success": result.get('validation_success', False),
             "retry_count": result.get('retry_count', 0),
-            "error": result.get('validation_error') or result.get('hive_error'),
+            "error": result.get('validation_error') or result.get('spark_error'),
         }
         
     except requests.exceptions.RequestException as e:
@@ -578,7 +580,10 @@ def main():
     base_url = os.getenv("API_URL", "http://localhost:8000")
     
     print("=" * 60)
-    print("Hive to BigQuery SQL Conversion Test Suite")
+    print("=" * 60)
+    print("Spark to BigQuery SQL Conversion Test Suite")
+    print("=" * 60)
+    print(f"API URL: {base_url}")
     print("=" * 60)
     print(f"API URL: {base_url}")
     print(f"Total Test Cases: {len(TEST_CASES)}")
@@ -608,11 +613,11 @@ def main():
     
     total = len(results)
     successful = sum(1 for r in results if r.get('success'))
-    hive_valid = sum(1 for r in results if r.get('hive_valid'))
+    spark_valid = sum(1 for r in results if r.get('spark_valid'))
     validation_passed = sum(1 for r in results if r.get('validation_success'))
     
     print(f"\nTotal Tests: {total}")
-    print(f"Hive SQL Valid: {hive_valid}/{total} ({hive_valid/total*100:.1f}%)")
+    print(f"Spark SQL Valid: {spark_valid}/{total} ({spark_valid/total*100:.1f}%)")
     print(f"Validation Passed: {validation_passed}/{total} ({validation_passed/total*100:.1f}%)")
     print(f"Fully Successful: {successful}/{total} ({successful/total*100:.1f}%)")
     
@@ -620,11 +625,11 @@ def main():
     print("-" * 60)
     for r in results:
         status = "✓" if r.get('success') else "✗"
-        hive_status = "✓" if r.get('hive_valid') else "✗"
+        spark_status = "✓" if r.get('spark_valid') else "✗"
         val_status = "✓" if r.get('validation_success') else "✗"
         retry = r.get('retry_count', 0)
         
-        print(f"{status} {r['name']:<40} Hive:{hive_status} Val:{val_status} Retry:{retry}")
+        print(f"{status} {r['name']:<40} Spark:{spark_status} Val:{val_status} Retry:{retry}")
     
     # List failed tests
     failed = [r for r in results if not r.get('success')]

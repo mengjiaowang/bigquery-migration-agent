@@ -1,4 +1,4 @@
-"""FastAPI service for Hive to BigQuery SQL conversion."""
+"""FastAPI service for Spark to BigQuery SQL conversion."""
 
 import asyncio
 import json
@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
         logger.warning("The service may not function correctly without these variables.")
     
     logger.info("=" * 60)
-    logger.info("Hive to BigQuery SQL Converter - Starting up")
+    logger.info("Spark to BigQuery SQL Converter - Starting up")
     logger.info(f"LLM Provider: {llm_provider}")
     logger.info(f"BQ Validation Mode: {validation_mode}")
     logger.info(f"Log Level: {log_level}")
@@ -76,8 +76,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Hive to BigQuery SQL Converter",
-    description="Convert Hive SQL to BigQuery SQL using LangGraph with configurable LLM (Gemini/OpenAI)",
+    title="Spark to BigQuery SQL Converter",
+    description="Convert Spark SQL to BigQuery SQL using LangGraph with configurable LLM (Gemini/OpenAI)",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -110,13 +110,13 @@ async def root():
     llm_provider = os.getenv("LLM_PROVIDER", "gemini")
     validation_mode = os.getenv("BQ_VALIDATION_MODE", "dry_run")
     return {
-        "service": "Hive to BigQuery SQL Converter",
+        "service": "Spark to BigQuery SQL Converter",
         "version": "1.0.0",
         "llm_provider": llm_provider,
         "validation_mode": validation_mode,
         "endpoints": {
             "/ui": "GET - Web UI for SQL conversion",
-            "/convert": "POST - Convert Hive SQL to BigQuery SQL",
+            "/convert": "POST - Convert Spark SQL to BigQuery SQL",
             "/health": "GET - Health check",
             "/logs/stream": "GET - SSE log stream",
             "/logs/recent": "GET - Recent logs",
@@ -164,27 +164,27 @@ async def get_logs(count: int = 50):
 
 @app.post("/convert", response_model=ConvertResponse)
 async def convert_sql(request: ConvertRequest):
-    """Convert Hive SQL to BigQuery SQL.
+    """Convert Spark SQL to BigQuery SQL.
     
     This endpoint:
-    1. Validates the input Hive SQL syntax
-    2. Converts Hive SQL to BigQuery SQL
+    1. Validates the input Spark SQL syntax
+    2. Converts Spark SQL to BigQuery SQL
     3. Validates the BigQuery SQL (using dry_run or llm mode based on BQ_VALIDATION_MODE)
     4. Iteratively fixes any errors (up to 3 retries)
     
     Args:
-        request: ConvertRequest containing the Hive SQL to convert.
+        request: ConvertRequest containing the Spark SQL to convert.
         
     Returns:
         ConvertResponse with conversion results and validation status.
     """
     logger.info("=" * 60)
     logger.info("[API] Received conversion request")
-    logger.info(f"[API] Input Hive SQL:\n{request.hive_sql}")
+    logger.info(f"[API] Input Spark SQL:\n{request.spark_sql}")
     
     try:
         # Run the conversion workflow
-        result = run_conversion(request.hive_sql)
+        result = run_conversion(request.spark_sql)
         
         # Build conversion history
         history = [
@@ -197,10 +197,10 @@ async def convert_sql(request: ConvertRequest):
         ]
         
         # Determine success and warning
-        success = result["hive_valid"] and result["validation_success"]
+        success = result["spark_valid"] and result["validation_success"]
         warning = None
         
-        if result["hive_valid"] and not result["validation_success"]:
+        if result["spark_valid"] and not result["validation_success"]:
             if result["retry_count"] >= result.get("max_retries", 3):
                 warning = (
                     f"Maximum retries ({result.get('max_retries', 3)}) exceeded. "
@@ -210,23 +210,23 @@ async def convert_sql(request: ConvertRequest):
         logger.info("=" * 60)
         logger.info("[API] Conversion completed")
         logger.info(f"[API] Success: {success}")
-        logger.info(f"[API] Hive Valid: {result['hive_valid']}")
+        logger.info(f"[API] Spark Valid: {result['spark_valid']}")
         logger.info(f"[API] Validation Success: {result['validation_success']}")
         logger.info(f"[API] Retry Count: {result['retry_count']}")
         if result.get("bigquery_sql"):
             logger.info(f"[API] Final BigQuery SQL:\n{result['bigquery_sql']}")
         if result.get("validation_error"):
             logger.error(f"[API] Validation Error: {result['validation_error']}")
-        if result.get("hive_error"):
-            logger.error(f"[API] Hive Error: {result['hive_error']}")
+        if result.get("spark_error"):
+            logger.error(f"[API] Spark Error: {result['spark_error']}")
         if warning:
             logger.warning(f"[API] Warning: {warning}")
         
         return ConvertResponse(
             success=success,
-            hive_sql=result["hive_sql"],
-            hive_valid=result["hive_valid"],
-            hive_error=result.get("hive_error"),
+            spark_sql=result["spark_sql"],
+            spark_valid=result["spark_valid"],
+            spark_error=result.get("spark_error"),
             bigquery_sql=result.get("bigquery_sql"),
             validation_success=result["validation_success"],
             validation_error=result.get("validation_error"),
@@ -234,6 +234,13 @@ async def convert_sql(request: ConvertRequest):
             retry_count=result["retry_count"],
             conversion_history=history,
             warning=warning,
+            execution_success=result.get("execution_success"),
+            execution_result=result.get("execution_result"),
+            execution_target_table=result.get("execution_target_table"),
+            execution_error=result.get("execution_error"),
+            data_verification_success=result.get("data_verification_success"),
+            data_verification_result=result.get("data_verification_result"),
+            data_verification_error=result.get("data_verification_error"),
         )
         
     except ValueError as e:
