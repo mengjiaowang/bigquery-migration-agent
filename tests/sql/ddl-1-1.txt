@@ -1,0 +1,48 @@
+set hivevar:date_app=${zdt.addDay(-1).format("yyyyMMdd")}_test;
+
+-- 1) 规范化 + 生成两种 method 列（不再 union all）
+drop table if exists tmp_htl_dsjobdb.tmp_ibu_overall_base_${date_app};
+create table tmp_htl_dsjobdb.tmp_ibu_overall_base_${date_app} as
+select  t1.d,
+        t1.query_id,
+        t1.cid,
+        t1.is_has_click,
+        t1.is_has_order,
+        t1.rank_in_qid_new,
+        t1.is_meta,
+        t1.m_country,
+        t1.masterhotelid,
+        case when t1.channeltype is null or t1.channeltype='' then 'unk' else t1.channeltype end as channeltype,
+        case when t1.refername  is null or t1.refername ='' then 'unk' else t1.refername  end as refername,
+        case when t1.allianceid is null or t1.allianceid='' then 'unk' else t1.allianceid end as allianceid,
+        case when t1.alliancesiteid is null or t1.alliancesiteid='' then 'unk' else t1.alliancesiteid end as alliancesiteid,
+        -- 细分 method
+        case when t1.htlist_recomm_type='reclist_onlyone' then '唯一推荐'
+             when t1.htlist_recomm_type='reclist_searchcompensate' then '搜索补偿'
+             when t1.mainlist_is_only = 'T' and t1.htllist_type = 'mainlist' then '唯一结果主列表'
+             when t1.sort='2' then '价格（由低到高）'
+             when t1.sort='3' then '价格（由高到低）'
+             when t1.sort='4' then '好评优先'
+             when t1.sort='5' then '星级（由高到低）'
+             when t1.sort='6' then '距离（由近及远）'
+             else
+                   case when t1.dispatchid_type in ('103','104') then '主排/欢迎度排序'  
+                        when t1.dispatchid_type in ('112','114') then '智能排序：POI' 
+                        when t1.dispatchid_type in ('113','115') then '智能排序：我的位置' 
+                        when t1.dispatchid_type in ('143','144') then '智能排序：同城' 
+                        else '其他'
+                   end
+            end as method_detail,
+        -- 粗分 method（国内/海外主场景等）
+        case when t1.dispatchid_type in ('103','112','113','143') then '国内主场景排序'
+             when t1.dispatchid_type in ('104','114','115','144') then '海外主场景排序'
+             else null end as method_group,
+        dim.locale_group
+from    dw_htlbizdb.cdm_traf_ht_trip_list_qid_day t1
+        -- BROADCAST(dim)
+        inner join di_dsjobdb.adm_trip_locale_group_mapping_dim dim
+          on lower(replace(t1.locale, '_', '-')) = dim.locale
+where   t1.d >= '${zdt.addDay(-1).format("yyyy-MM-")}01'
+  and   t1.d <  add_months('${zdt.addDay(-1).format("yyyy-MM-")}01', 1)
+  and   t1.is_meta = 'F'
+;

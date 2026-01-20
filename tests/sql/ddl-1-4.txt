@@ -1,0 +1,45 @@
+set hivevar:date_app=${zdt.addDay(-1).format("yyyyMMdd")}_test;
+
+drop table if exists tmp_htl_dsjobdb.tmp_ibu_overall_agg_group_${date_app};
+create table tmp_htl_dsjobdb.tmp_ibu_overall_agg_group_${date_app} as
+select  d,
+        nvl(channeltype,'all') as channeltype,
+        nvl(refername,'all')   as refername,
+        nvl(allianceid,'all')  as allianceid,
+        nvl(alliancesiteid,'all') as alliancesiteid,
+        nvl(method_group,'all')  as methodname,
+        nvl(locale_group,'all') as locale_group,
+        -- count(*)                                     as pv,
+        -- twy修改此行
+        count(distinct query_id) as pv,
+        count(distinct cid)                          as uv,
+        sum(case when min_rank_clkord is not null then 1 else 0 end)                          as click_query_cnt,
+        sum(case when min_rank_clkord = 1 then 1 else 0 end)                                   as click_query_cnt_top1,
+        sum(case when min_rank_clkord <= 3 then 1 else 0 end)                                  as click_query_cnt_top3,
+        sum(case when min_rank_clkord <= 5 then 1 else 0 end)                                  as click_query_cnt_top5,
+        sum(case when min_rank_clkord <= 10 then 1 else 0 end)                                 as click_query_cnt_top10,
+        sum(case when min_rank_clkord <= 20 then 1 else 0 end)                                 as click_query_cnt_top20,
+        sum(case when min_rank_order is not null then 1 else 0 end)                            as order_query_cnt,
+        sum(case when min_rank_order = 1 then 1 else 0 end)                                    as order_query_cnt_top1,
+        sum(case when min_rank_order <= 3 then 1 else 0 end)                                   as order_query_cnt_top3,
+        sum(case when min_rank_order <= 5 then 1 else 0 end)                                   as order_query_cnt_top5,
+        sum(case when min_rank_order <= 10 then 1 else 0 end)                                  as order_query_cnt_top10,
+        sum(case when min_rank_order <= 20 then 1 else 0 end)                                  as order_query_cnt_top20,
+        sum(expo_hotel_cnt_q)                            as expo_hotel_count
+from    tmp_htl_dsjobdb.tmp_ibu_overall_qid_agg_${date_app}
+where   method_group is not null
+group by d, channeltype, refername, allianceid, alliancesiteid, method_group, locale_group
+grouping sets(
+  d,
+  (d, channeltype),
+  (d, channeltype, method_group),
+  (d, channeltype, method_group, locale_group),
+  (d, channeltype, method_group, allianceid),
+  (d, channeltype, refername),
+  (d, channeltype, refername, locale_group),
+  (d, channeltype, refername, method_group),
+  (d, channeltype, refername, method_group, allianceid),
+  (d, channeltype, refername, allianceid),
+  (d, channeltype, refername, allianceid, alliancesiteid),
+  (d, channeltype, refername, allianceid, alliancesiteid, method_group, locale_group)
+);

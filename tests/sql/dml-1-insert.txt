@@ -1,0 +1,43 @@
+use dw_htlbizdb;
+set hivevar:date_app=${zdt.addDay(-1).format("yyyyMMdd")}_test;
+
+insert overwrite table dw_htlbizdb.edw_traf_search_tcom_ubt_server_htllist_di_sgp partition (d='${zdt.addDay(-1).format("yyyy-MM-dd")}')
+select
+     t.event_id
+	,t.key
+	,t.starttime --埋点触发时间
+	,t.cid --用户设备标识
+	,t.uid--用户id
+	,t.vid --用户唯一标识，主要是非app统计用户数用
+	,t.sid --会话ID
+	,t.pvid --页面自增长ID
+	,t.page  --页面ID/CODE
+    ,t.value_data_map
+    ,t.htl_data_map
+    ,t.masterhotelid
+    ,t.masterhotelid_token
+    ,t.masterhotelid_tracelogid
+    ,e.exchange
+    ,m.star       as m_star  
+    ,m.cityid     as m_city   
+    ,m.countryid  as m_country 
+    ,m.goldstar   as m_goldstar
+    ,c_starttime as c_starttime
+from (
+    select
+        *
+        ,ROW_NUMBER() OVER (PARTITION BY cid,vid,masterhotelid,masterhotelid_token,masterhotelid_tracelogid ORDER BY starttime desc ) AS q_rnk11
+        ,value_data_map['currency'] as currency 
+    from dw_htlbizdb.edw_traf_search_tcom_ubt_server_htllist_hi_sgp
+    where d='${zdt.addDay(-1).format("yyyy-MM-dd")}'
+) t
+LEFT JOIN (
+	SELECT  
+	        distinct isocode
+	       ,exchange
+	FROM dw_htlbizdb.v_dim_traf_multi_Currency_DBRepl_df_sgp
+	WHERE d = '${zdt.addDay(0).format("yyyy-MM-dd")}' 
+) e ON lower(t.currency) = lower(e.isocode)
+LEFT JOIN dw_htlbizdb.v_dim_traf_multi_masterhotel_df_sgp  m ON t.masterhotelid = m.masterhotelid
+where t.q_rnk11=1
+;

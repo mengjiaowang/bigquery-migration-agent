@@ -1,0 +1,8 @@
+set hivevar:date_app=${zdt.addDay(-1).format("yyyyMMdd")}_test;
+
+
+drop table if exists tmp_htl_dsjobdb.tmp_ibu_overall_agg_detail_${date_app};
+drop table if exists tmp_htl_dsjobdb.tmp_ibu_overall_agg_group_${date_app};
+drop table if exists tmp_htl_dsjobdb.tmp_ibu_overall_qid_agg_${date_app};
+drop table if exists tmp_htl_dsjobdb.tmp_ibu_overall_base_${date_app};
+

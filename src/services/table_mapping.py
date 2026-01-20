@@ -1,0 +1,158 @@
+"""Table mapping service for Hive to BigQuery table name conversion."""
+
+import csv
+import logging
+import os
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TableMapping:
+    """Represents a Hive to BigQuery table mapping."""
+    
+    hive_table: str
+    bigquery_table: str
+    note: Optional[str] = None
+
+
+class TableMappingService:
+    """Service for managing Hive to BigQuery table name mappings."""
+    
+    _instance: Optional["TableMappingService"] = None
+    _mappings: dict[str, str] = {}
+    _loaded: bool = False
+    
+    def __new__(cls) -> "TableMappingService":
+        """Singleton pattern to ensure mappings are loaded only once."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        """Initialize the service and load mappings if not already loaded."""
+        if not self._loaded:
+            self.load_mappings()
+    
+    def load_mappings(self, csv_path: Optional[str] = None) -> None:
+        """Load table mappings from CSV file.
+        
+        Args:
+            csv_path: Path to the CSV file. If not provided, uses default path.
+        """
+        if csv_path is None:
+            # Default path: tests/data/hive2bq.csv relative to project root
+            csv_path = os.getenv(
+                "TABLE_MAPPING_CSV",
+                str(Path(__file__).parent.parent.parent / "tests" / "data" / "hive2bq.csv")
+            )
+        
+        if not os.path.exists(csv_path):
+            logger.warning(f"Table mapping file not found: {csv_path}")
+            return
+        
+        try:
+            with open(csv_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    hive_table = row.get("Hive 表名 (Original)", "").strip()
+                    bq_table = row.get("BigQuery 表名 (Mapped)", "").strip()
+                    
+                    # Skip empty mappings or "无" entries
+                    if hive_table and bq_table and bq_table != "无":
+                        # Normalize hive table name to lowercase for case-insensitive matching
+                        self._mappings[hive_table.lower()] = bq_table
+                        
+            logger.info(f"Loaded {len(self._mappings)} table mappings from {csv_path}")
+            TableMappingService._loaded = True
+            
+        except Exception as e:
+            logger.error(f"Failed to load table mappings: {e}")
+    
+    def get_bigquery_table(self, hive_table: str) -> Optional[str]:
+        """Get the BigQuery table name for a Hive table.
+        
+        Args:
+            hive_table: The Hive table name (e.g., "dim_hoteldb.dimhotel").
+            
+        Returns:
+            The mapped BigQuery table name, or None if not found.
+        """
+        # Normalize to lowercase for case-insensitive matching
+        normalized = hive_table.lower().strip()
+        return self._mappings.get(normalized)
+    
+    def get_all_mappings(self) -> dict[str, str]:
+        """Get all table mappings.
+        
+        Returns:
+            Dictionary of Hive table names to BigQuery table names.
+        """
+        return self._mappings.copy()
+    
+    def replace_table_names(self, sql: str) -> str:
+        """Replace all Hive table names in SQL with BigQuery table names.
+        
+        Args:
+            sql: The SQL statement with Hive table names.
+            
+        Returns:
+            SQL statement with BigQuery table names.
+        """
+        result = sql
+        
+        # Sort mappings by length (longest first) to avoid partial replacements
+        sorted_mappings = sorted(
+            self._mappings.items(),
+            key=lambda x: len(x[0]),
+            reverse=True
+        )
+        
+        for hive_table, bq_table in sorted_mappings:
+            # Create pattern that matches the table name with word boundaries
+            # Handle both `table` and table formats
+            # Match: FROM/JOIN/INTO table_name, or `table_name`
+            patterns = [
+                # Match backtick-quoted table names
+                (rf'`{re.escape(hive_table)}`', f'`{bq_table}`'),
+                # Match unquoted table names with word boundaries
+                # This pattern matches table names after FROM, JOIN, INTO, UPDATE, TABLE keywords
+                (rf'(?i)(?<=\bFROM\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
+                (rf'(?i)(?<=\bJOIN\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
+                (rf'(?i)(?<=\bINTO\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
+                (rf'(?i)(?<=\bUPDATE\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
+                (rf'(?i)(?<=\bTABLE\s)({re.escape(hive_table)})(?=\s|$|,|\))', bq_table),
+            ]
+            
+            for pattern, replacement in patterns:
+                result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+        
+        return result
+    
+    def get_mapping_info_for_prompt(self) -> str:
+        """Generate a formatted string of table mappings for use in prompts.
+        
+        Returns:
+            Formatted string listing all table mappings.
+        """
+        if not self._mappings:
+            return "No table mappings available."
+        
+        lines = ["## Table Name Mappings (Hive → BigQuery):"]
+        for hive_table, bq_table in sorted(self._mappings.items()):
+            lines.append(f"- {hive_table} → `{bq_table}`")
+        
+        return "\n".join(lines)
+
+
+def get_table_mapping_service() -> TableMappingService:
+    """Get the singleton table mapping service instance.
+    
+    Returns:
+        TableMappingService instance.
+    """
+    return TableMappingService()

@@ -1,0 +1,287 @@
+WITH traf AS
+(
+	SELECT  t1.vid                                       AS device_id
+	       ,concat_ws("_",t1.vid,sid,pvid)  AS browse_id
+	       ,t1.d
+	       ,t1.channeltype                                    AS device_chl
+           ,CASE WHEN t4.distr_chl = "Meta" THEN "Meta"
+            	 WHEN t4.distr_chl != "Meta" THEN '1-Meta'  ELSE 'others' END AS is_meta
+	       ,coalesce(t2.site, 'others') AS site
+	       ,coalesce(t3.lang, 'others') AS lang
+	       ,coalesce(t4.distr_chl, 'others') AS distr_chl
+	       ,CASE WHEN first_orderdate < '${zdt.addDay(-1).format("yyyy-MM-dd")}' THEN 'old'  ELSE 'new' END                                                                  AS is_newcus
+	       ,CASE WHEN global_type in ('HN') then 'mchn'
+	             WHEN global_type in ('HMT','HI') then 'hmt+ovs' else '-99999' end as is_mchn
+	       ,CASE WHEN global_type in ('HN','HMT') then 'chn'
+	             WHEN global_type in ('HI') then 'ovs' else '-99999' end as is_chn
+	       ,CASE WHEN global_type in ('HN') then 'mchn'
+	             WHEN global_type in ('HMT') then 'hmt'
+	             WHEN global_type in ('HI') then 'ovs' else '-99999' end as global_type
+	       ,CASE WHEN global_type in ('HN') then 'mchn'
+	             WHEN global_type in ('HMT') AND province in (32,33) then 'hm'
+	             WHEN (global_type in ('HMT') AND province in (53)) or t1.global_type in ('HI') then 't+ovs' else '-99999' end as is_hm
+	FROM dw_htldatadb.edw_traf_browse_ebk_ibu_ubt_pageview_v2 t1 --740854 
+	LEFT JOIN
+	(
+		SELECT  vid
+		       ,MIN(to_date(orderdate)) AS first_orderdate
+		FROM dw_htlbizdb.edw_traf_multi_tcom_order_orddate_sgp_di
+		WHERE d = (SELECT max(d) from dw_htlbizdb.edw_traf_multi_tcom_order_orddate_sgp_di)
+		AND vid is not null
+		AND orderstatus != 'C'
+		GROUP BY  vid
+	) v1
+	ON t1.vid = v1.vid
+	LEFT JOIN dw_htlbizdb.v_dim_prd_pub_site t2 on t1.region = t2.site
+	LEFT JOIN dw_htlbizdb.v_dim_prd_pub_lang t3 on t1.language = t3.lang
+	LEFT JOIN dw_htlbizdb.v_dim_prd_pub_distr_chl t4 on t1.refername = t4.distr_chl
+	WHERE t1.d = '${zdt.addDay(-1).format("yyyy-MM-dd")}'
+	AND t1.channeltype IN ('app', 'online', 'h5')
+), ord AS
+(
+	SELECT  site
+	       ,lang
+	       ,device_chl
+	       ,distr_chl                                                                                               AS distr_chl
+	       ,CASE WHEN distr_chl = 'Meta' THEN 'Meta'  ELSE '1-Meta' END                                             AS is_meta
+	       ,ord_cnt
+	       ,ord_cnt_dc
+	       ,ord_cnt_s
+	       ,ord_cnt_ota
+	       ,rn_cnt
+	       ,rn_cnt_dc
+	       ,rn_cnt_s
+	       ,rn_cnt_ota
+	       ,CASE WHEN first_orderdate < '${zdt.addDay(-1).format("yyyy-MM-dd")}' THEN 'old'  ELSE 'new' END                                                                  AS is_newcus
+	       ,t1.d
+	       ,CASE WHEN country = 1 and province not in (32,33,53) then 'mchn'
+	             WHEN province in (32,33,53) or country != 1 then 'hmt+ovs' else '-99999' end as is_mchn
+	       ,CASE WHEN country = 1 then 'chn'
+	             WHEN country != 1 then 'ovs' else '-99999' end as is_chn
+	       ,CASE WHEN country = 1 and province not in (32,33,53) then 'mchn'
+	             WHEN province in (32,33,53) then 'hmt'
+	             WHEN country != 1 then 'ovs' else '-99999' end as global_type
+	       ,CASE WHEN country = 1 and province not in (32,33,53) then 'mchn'
+	             WHEN province in (32,33) then 'hm'
+	             WHEN province in (53) or country != 1 then 't+ovs' else '-99999' end as is_hm
+	FROM dw_htlbizdb.cdm_traf_browse_tcom_full_di t1
+	LEFT JOIN
+	(
+		SELECT  vid
+		       ,MIN(to_date(orderdate)) AS first_orderdate
+		FROM dw_htlbizdb.edw_traf_multi_tcom_order_orddate_sgp_di
+		WHERE d = (SELECT max(d) from dw_htlbizdb.edw_traf_multi_tcom_order_orddate_sgp_di)
+		AND vid is not null
+		AND orderstatus != 'C'
+		GROUP BY  vid
+	) v1
+	ON t1.device_id = v1.vid
+	LEFT JOIN dim_hoteldb.dimcity c on t1.city_id = c.cityid
+	WHERE t1.d = '${zdt.addDay(-1).format("yyyy-MM-dd")}'
+	AND ord_cnt > 0 
+)
+INSERT OVERWRITE TABLE dw_htlbizdb.mid_traf_browse_tcom_cube_di
+SELECT  t1.device_chl
+       ,t1.cube_value
+       ,dw_htlbizdb.CubeColumnGenerate(t1.cube_value) AS cube_col
+       ,map("uv", t1.uv
+       ,"pv", t1.pv
+       ,"ord_cnt", t2.ord_cnt
+       ,"ord_cnt_dc", t2.ord_cnt_dc
+       ,"ord_cnt_s", t2.ord_cnt_s
+       ,"ord_cnt_ota", t2.ord_cnt_ota
+       ,"rn_cnt", t2.rn_cnt
+       ,"rn_cnt_dc", t2.rn_cnt_dc
+       ,"rn_cnt_s", t2.rn_cnt_s
+       ,"rn_cnt_ota", t2.rn_cnt_ota
+       ) AS indicator
+       ,t1.d
+       ,'pageview_ibu_v2'                                    AS cube_type
+FROM
+(
+	SELECT  COUNT(DISTINCT device_id) AS uv
+	       ,COUNT(DISTINCT browse_id) AS pv
+	       ,device_chl
+	       ,dw_htlbizdb.cubeValueGenerate(udf.to_json(map( 'device_chl',device_chl --渠道
+                                              ,'site',site --站点
+                                              ,'distr_chl', case when is_meta in ('Meta')  then '-99999'
+                                                                 else coalesce(distr_chl, is_meta) end
+                                              ,'lang',lang --语言
+                                              ,'is_newcus',is_newcus -- 是否新客
+                                              ,"global_type", case when is_chn in ('ovs') or is_mchn in ('mchn') or is_hm in ('mchn') then '-99999'
+                                                                     else coalesce(global_type, is_mchn, is_chn, is_hm) end
+                                            ))) AS cube_value
+	       ,d
+	FROM traf
+	GROUP BY  device_chl --渠道
+             ,site --站点
+             ,distr_chl --分销渠道
+             ,is_meta --是否Meta
+             ,lang --语言
+             ,is_newcus -- 是否新客
+             ,is_mchn
+             ,is_chn
+             ,global_type
+	         ,d -- 日期 
+	GROUPING SETS ( 
+                (d, is_chn, device_chl)
+              , (d, is_chn, device_chl, site)
+              , (d, is_chn, device_chl, site, lang)
+              , (d, is_chn, device_chl, distr_chl)
+              , (d, is_chn, device_chl, site, distr_chl)
+              , (d, is_chn, device_chl, site, lang, distr_chl)
+              , (d, is_chn, device_chl, is_meta) 
+              , (d, is_chn, device_chl, site, is_meta) 
+              , (d, is_chn, device_chl, site, lang, is_meta)          
+              
+              , (d, is_mchn, device_chl)
+              , (d, is_mchn, device_chl, site)
+              , (d, is_mchn, device_chl, site, lang)
+              , (d, is_mchn, device_chl, distr_chl)
+              , (d, is_mchn, device_chl, site, distr_chl)
+              , (d, is_mchn, device_chl, site, lang, distr_chl)
+              , (d, is_mchn, device_chl, is_meta) 
+              , (d, is_mchn, device_chl, site, is_meta) 
+              , (d, is_mchn, device_chl, site, lang, is_meta)
+              
+              , (d, global_type, device_chl)
+              , (d, global_type, device_chl, site)
+              , (d, global_type, device_chl, site, lang)
+              , (d, global_type, device_chl, distr_chl)
+              , (d, global_type, device_chl, site, distr_chl)
+              , (d, global_type, device_chl, site, lang, distr_chl)
+              , (d, global_type, device_chl, is_meta) 
+              , (d, global_type, device_chl, site, is_meta) 
+              , (d, global_type, device_chl, site, lang, is_meta)
+              
+              , (d, is_newcus, is_chn, device_chl)
+              , (d, is_newcus, is_chn, device_chl, site)
+              , (d, is_newcus, is_chn, device_chl, site, lang)
+              , (d, is_newcus, is_chn, device_chl, distr_chl)
+              , (d, is_newcus, is_chn, device_chl, site, distr_chl)
+              , (d, is_newcus, is_chn, device_chl, site, lang, distr_chl)
+              , (d, is_newcus, is_chn, device_chl, is_meta) 
+              , (d, is_newcus, is_chn, device_chl, site, is_meta) 
+              , (d, is_newcus, is_chn, device_chl, site, lang, is_meta)          
+              
+              , (d, is_newcus, is_mchn, device_chl)
+              , (d, is_newcus, is_mchn, device_chl, site)
+              , (d, is_newcus, is_mchn, device_chl, site, lang)
+              , (d, is_newcus, is_mchn, device_chl, distr_chl)
+              , (d, is_newcus, is_mchn, device_chl, site, distr_chl)
+              , (d, is_newcus, is_mchn, device_chl, site, lang, distr_chl)
+              , (d, is_newcus, is_mchn, device_chl, is_meta) 
+              , (d, is_newcus, is_mchn, device_chl, site, is_meta) 
+              , (d, is_newcus, is_mchn, device_chl, site, lang, is_meta)
+              
+              , (d, is_newcus, global_type, device_chl)
+              , (d, is_newcus, global_type, device_chl, site)
+              , (d, is_newcus, global_type, device_chl, site, lang)
+              , (d, is_newcus, global_type, device_chl, distr_chl)
+              , (d, is_newcus, global_type, device_chl, site, distr_chl)
+              , (d, is_newcus, global_type, device_chl, site, lang, distr_chl)
+              , (d, is_newcus, global_type, device_chl, is_meta) 
+              , (d, is_newcus, global_type, device_chl, site, is_meta) 
+              , (d, is_newcus, global_type, device_chl, site, lang, is_meta)
+              
+              , (d, is_hm, device_chl)
+              )
+) t1 
+LEFT JOIN 
+(
+	SELECT  SUM(ord_cnt)    AS ord_cnt
+	       ,SUM(ord_cnt_dc) AS ord_cnt_dc
+	       ,SUM(ord_cnt_s)  AS ord_cnt_s
+	       ,SUM(ord_cnt_ota) AS ord_cnt_ota
+	       ,SUM(rn_cnt)     AS rn_cnt
+	       ,SUM(rn_cnt_dc)  AS rn_cnt_dc
+	       ,SUM(rn_cnt_s)   AS rn_cnt_s
+	       ,SUM(rn_cnt_ota)   AS rn_cnt_ota
+	       ,device_chl
+	       ,dw_htlbizdb.cubeValueGenerate(udf.to_json(map( 'device_chl',device_chl --渠道
+                                              ,'site',site --站点
+                                              ,'distr_chl', case when is_meta in ('Meta')  then '-99999'
+                                                                 else coalesce(distr_chl, is_meta) end
+                                              ,'lang',lang --语言
+                                              ,'is_newcus',is_newcus -- 是否新客
+                                              ,"global_type", case when is_chn in ('ovs') or is_mchn in ('mchn') or is_hm in ('mchn') then '-99999'
+                                                                     else coalesce(global_type, is_mchn, is_chn, is_hm) end
+                                            ))) AS cube_value
+	       ,d
+	FROM ord
+	GROUP BY  device_chl --渠道
+             ,site --站点
+             ,distr_chl --分销渠道
+             ,is_meta --是否Meta
+             ,lang --语言
+             ,is_newcus -- 是否新客
+             ,is_mchn
+             ,is_chn
+             ,global_type
+	         ,d -- 日期 
+	GROUPING SETS ( 
+                (d, is_chn, device_chl)
+              , (d, is_chn, device_chl, site)
+              , (d, is_chn, device_chl, site, lang)
+              , (d, is_chn, device_chl, distr_chl)
+              , (d, is_chn, device_chl, site, distr_chl)
+              , (d, is_chn, device_chl, site, lang, distr_chl)
+              , (d, is_chn, device_chl, is_meta) 
+              , (d, is_chn, device_chl, site, is_meta) 
+              , (d, is_chn, device_chl, site, lang, is_meta)          
+              
+              , (d, is_mchn, device_chl)
+              , (d, is_mchn, device_chl, site)
+              , (d, is_mchn, device_chl, site, lang)
+              , (d, is_mchn, device_chl, distr_chl)
+              , (d, is_mchn, device_chl, site, distr_chl)
+              , (d, is_mchn, device_chl, site, lang, distr_chl)
+              , (d, is_mchn, device_chl, is_meta) 
+              , (d, is_mchn, device_chl, site, is_meta) 
+              , (d, is_mchn, device_chl, site, lang, is_meta)
+              
+              , (d, global_type, device_chl)
+              , (d, global_type, device_chl, site)
+              , (d, global_type, device_chl, site, lang)
+              , (d, global_type, device_chl, distr_chl)
+              , (d, global_type, device_chl, site, distr_chl)
+              , (d, global_type, device_chl, site, lang, distr_chl)
+              , (d, global_type, device_chl, is_meta) 
+              , (d, global_type, device_chl, site, is_meta) 
+              , (d, global_type, device_chl, site, lang, is_meta)
+              
+              , (d, is_newcus, is_chn, device_chl)
+              , (d, is_newcus, is_chn, device_chl, site)
+              , (d, is_newcus, is_chn, device_chl, site, lang)
+              , (d, is_newcus, is_chn, device_chl, distr_chl)
+              , (d, is_newcus, is_chn, device_chl, site, distr_chl)
+              , (d, is_newcus, is_chn, device_chl, site, lang, distr_chl)
+              , (d, is_newcus, is_chn, device_chl, is_meta) 
+              , (d, is_newcus, is_chn, device_chl, site, is_meta) 
+              , (d, is_newcus, is_chn, device_chl, site, lang, is_meta)          
+              
+              , (d, is_newcus, is_mchn, device_chl)
+              , (d, is_newcus, is_mchn, device_chl, site)
+              , (d, is_newcus, is_mchn, device_chl, site, lang)
+              , (d, is_newcus, is_mchn, device_chl, distr_chl)
+              , (d, is_newcus, is_mchn, device_chl, site, distr_chl)
+              , (d, is_newcus, is_mchn, device_chl, site, lang, distr_chl)
+              , (d, is_newcus, is_mchn, device_chl, is_meta) 
+              , (d, is_newcus, is_mchn, device_chl, site, is_meta) 
+              , (d, is_newcus, is_mchn, device_chl, site, lang, is_meta)
+              
+              , (d, is_newcus, global_type, device_chl)
+              , (d, is_newcus, global_type, device_chl, site)
+              , (d, is_newcus, global_type, device_chl, site, lang)
+              , (d, is_newcus, global_type, device_chl, distr_chl)
+              , (d, is_newcus, global_type, device_chl, site, distr_chl)
+              , (d, is_newcus, global_type, device_chl, site, lang, distr_chl)
+              , (d, is_newcus, global_type, device_chl, is_meta) 
+              , (d, is_newcus, global_type, device_chl, site, is_meta) 
+              , (d, is_newcus, global_type, device_chl, site, lang, is_meta)
+              
+              , (d, is_hm, device_chl)
+              )
+) t2
+ON t1.cube_value = t2.cube_value AND t1.d = t2.d
+WHERE t1.cube_value not LIKE '%-99999%'
