@@ -42,8 +42,7 @@ dim_hoteldb.v_dimmasterhotel,trip-htl-bi-dbprj.htl_bi_webeye.v_dimmasterhotel,�
 dim_hoteldb.vDimRoom,trip-htl-bi-dbprj.htl_bi_webeye.vdimroom,匹配成功 (大小写差异，指向同一表)
 Dim_HotelDB.vDimHotel,trip-htl-bi-dbprj.htl_bi_webeye.vdimhotel,匹配成功
 dw_htlbizdb.v_dim_traf_room_htl_df,trip-htl-bi-dbprj.htl_bi_webeye.v_dim_traf_room_htl_df,匹配成功
-dw_htlbizdb.v_edw_traf_ubt_tcom_custom_di,无,未找到直接对应表，建议检查 htl_bi_webeye.ctripdi_prodb_edw_ubt_custom_hi_di
-Dim_HotelDB.DimLocation,trip-htl-bi-dbprj.htl_bi_webeye.dim_hoteldb_dimlocation_source,匹配成功 (也存在 htl_bi_webeye.dimlocation)
+dw_htlbizdb.v_edw_traf_ubt_tcom_custom_di,trip-htl-bi-dbprj.htl_bi_webeye.v_edw_traf_ubt_tcom_custom_di,匹配成功
 ods_htl_htlcommdb.comm_hotel_show_rating,trip-htl-bi-dbprj.htl_bi_webeye.comm_hotel_show_rating,匹配成功
 ods_htl_htlinfopediadb.district,trip-htl-bi-dbprj.htl_bi_webeye.district,匹配成功
 ods_htl_hotelpubdb.hotelbrand,trip-htl-bi-dbprj.htl_bi_webeye.hotelbrand,匹配成功
@@ -64,5 +63,5 @@ dw_htlbizdb.v_dim_traf_multi_masterhotel_df_sgp,trip-htl-bi-dbprj.htl_bi_webeye.
 di_dsjobdb.adm_ibu_overall_trend_analysis,trip-htl-bi-dbprj.htl_bi_webeye.adm_ibu_overall_trend_analysis,匹配成功
 dw_htlbizdb.cdm_traf_hs_ibu_user_seq_click_base_v4,trip-htl-bi-dbprj.htl_bi_webeye.cdm_traf_hs_ibu_user_seq_click_base_v4,匹配成功
 dw_htlbizdb.edw_traf_pt_fact_ibu_ubt_pageview,trip-htl-bi-dbprj.htl_bi_webeye.edw_traf_pt_fact_ibu_ubt_pageview,匹配成功
-abtest,da-agent-prototyping.firebase_gen.abtest,匹配成功
-original_target_table,da-agent-prototyping.migration_test.migration_target_table,匹配成功
+abtest,da-agent-prototyping.firebase_gen.abtest
+migration_target_table,da-agent-prototyping.migration_test.migration_target_table

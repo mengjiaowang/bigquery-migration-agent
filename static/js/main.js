@@ -102,6 +102,7 @@ async function handleConvert() {
     
     btn.disabled = true;
     btnText.innerHTML = '<div class="spinner"></div> 转换中...';
+    UI.resetStatusCards();
     UI.updateStatus('loading', '正在转换...');
 
     try {

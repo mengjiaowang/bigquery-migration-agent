@@ -1,0 +1,595 @@
+use dw_htlbizdb;
+
+-- ============================================================
+-- PART 1: CTE Definitions (Derived from sql02.txt)
+-- ============================================================
+with tmp_kwfu_table as (
+    select
+        event_id
+        ,key
+        ,channeltype --渠道
+        ,t.starttime --埋点触发时间
+        ,t.cid --  用户设备标识
+        ,t.uid--用户id
+        ,t.vid --用户唯一标识，主要是非app统计用户数用
+        ,t.pvid --页面自增长ID
+        ,t.sid --会话ID
+        ,t.page  --页面ID/CODE
+        ,appversion --客户端app版本号
+        ,regexp_replace(checkin,'^(\\d{4})[/\-]?(\\d{2})[/\-]?(\\d{2})$','$1-$2-$3') as checkin --入住日期
+        ,regexp_replace(checkout,'^(\\d{4})[/\-]?(\\d{2})[/\-]?(\\d{2})$','$1-$2-$3') as checkout --离店日期
+        ,roomnum  --房间数
+        ,adultnum--成人数
+        ,childnum  --儿童数
+        ,nvl(srmlist,'[]') as srmlist --房型列表 -- null时设置为[],与udf.json_split兼容
+        ,rmlist_tracelogid --房型列表服务ID
+        ,allianceid --aid
+        ,alliancesiteid --sid
+        ,is_spider --
+        ,locale --站点
+        ,t.data['domain'] as domain 
+        ,is_meta 
+        ,masterhotelid 
+        ,isnoprice 
+        ,userip --客户端ip
+        ,get_json_object(lower(t.data['value']),'$.user_level') as user_level --用户等级身份
+        ,childage
+        --2023-03-28 kw.fu
+        ,hotelpriceroomid
+        ,hotelprice
+        ,sourcetype
+        ,source_id
+        ,ouid
+        ,datacenter
+        ,couponinfo    --优惠券信息list
+        ,mergedRoomInfos -- 合并房型信息List
+        -- 2023-12-08 曾金平
+        ,meta_roomid    -- #投放房型的roomid
+        ,isvalid_case    -- #是否是有效case，字段未埋就是有效，无效则埋具体无效原因
+        ,meta_avgprice    -- #投放的税前均价
+        ,meta_totalprice --#投放的税后总价
+        ,org_rmlist --原始roomlist节点
+        ,time_gap
+        ,hotelroomtype -- 需要监控的价格一致性类型:1起价房型 2指定房型
+        ,hoteldeleteprice --酒店划线价
+        ,hotelpriceroomtoken --房型编号
+        ,pre_masterhotelid_tracelogid 
+        ,is_landdtl 
+        ,meta_vendorid 
+        ,spider_type
+        ,is_CaliforniaPrice
+        ,fullroom_reason
+        ,bookableDateList
+        ,filterlist_main
+        ,showtype_main
+        ,is_includetaxpayhotel
+        ,meta_rateid,meta_rateplanid
+        ,t.d
+        ,t.h
+    from dw_htlbizdb.edw_traf_ht_htl_servercustom_hour_new t 
+    lateral view json_tuple(t.data['value'],
+        'channeltype', 'appversion', 'checkin', 'checkout', 'roomnum', 'adultnum', 'childnum', 
+        'srmlist', 'rmlist_tracelogid', 'allianceid', 'alliancesiteid', 'is_spider', 'locale', 
+        'is_meta', 'masterhotelid', 'isnoprice', 'userip', 'childage', 'hotelpriceroomid', 
+        'hotelprice', 'sourcetype', 'source_id', 'ouid', 'datacenter', 'couponinfo', 'mergedRoomInfos',
+        'meta_roomid', 'isvalid_case', 'meta_avgprice', 'meta_totalprice', 'org_rmlist', 'time_gap',
+        'hotelroomtype', 'hoteldeleteprice', 'hotelpriceroomtoken', 'pre_masterhotelid_tracelogid',
+        'is_landdtl', 'meta_vendorid', 'spider_type', 'is_CaliforniaPrice', 'fullroom_reason',
+        'bookableDateList', 'filterlist', 'showType', 'is_includetaxpayhotel','meta_rateid','meta_rateplanid'
+    ) jt as channeltype, appversion, checkin, checkout, roomnum, adultnum, childnum, 
+        srmlist, rmlist_tracelogid, allianceid, alliancesiteid, is_spider, locale, 
+        is_meta, masterhotelid, isnoprice, userip, childage, hotelpriceroomid, 
+        hotelprice, sourcetype, source_id, ouid, datacenter, couponinfo, mergedRoomInfos,
+        meta_roomid, isvalid_case, meta_avgprice, meta_totalprice, org_rmlist, time_gap,
+        hotelroomtype, hoteldeleteprice, hotelpriceroomtoken, pre_masterhotelid_tracelogid,
+        is_landdtl, meta_vendorid, spider_type, is_CaliforniaPrice, fullroom_reason,
+        bookableDateList, filterlist_main, showtype_main, is_includetaxpayhotel,meta_rateid,meta_rateplanid
+    where t.d='${zdt.add(10,-1).format("yyyy-MM-dd")}' 
+      and t.h='${zdt.add(10,-1).format("HH")}' 
+        and t.key = 'trip_rmlist_server_ser'
+        and nvl(t.data['value'],'')<>''
+        and coalesce(get_json_object(t.data['value'],'$.from_env'),'') not in ('mirror')
+),
+exploded_data as (
+    select
+        t.*
+        ,r.rm_json 
+        ,roomid
+        ,room_token
+        ,rateplanid
+        ,currency
+        ,rm_dispatchid, isguessyoulike, fq_price, fh_price, fh_price_total, fh_price_avg, 
+        tax, tax_total, tax_avg, cost, shadowid, maskid, pkg_id, ishourroom, isbookable, 
+        bedtype, meal, mealnum, area, cancelpolicy, iscomfirm, roomperson, comfirmhour, 
+        guaranteetype, paytype, promotionlist, filterlist, age, smokeinfo, cancelpriceinfo, 
+        showpriceinfo, showwithtaxpriceinfo, deduct, refund, iswifi, confirmpolicy, 
+        minstartrooms, maxstartrooms, windowinfo, isfullapply, roomtype, exchange, 
+        floorpiece, fh_price_avg_alltax, fh_price_total_alltax, showtype, guestsnum, 
+        isVeilDiffPriceZero, sceneType, isroomlist, ismeta_show, roomtag, prepayDiscountList, 
+        cost_promotion, remainRoomQuantity, rank, mealType, basicroomid, is_start_room, 
+        ismultiroomrecommend, recommend_roomnum, isentityroom, packagecontent, cancelPolicyType, 
+        cancelpolicy_desc, cancelLadderDetails, is_presale_frontload, presale_pkgid, 
+        presale_price, roomperson_adult, roomperson_child, entityroom_desc, iscombine_ser, 
+        avgprice_beforetax, isMaskRoom, bedtypeCategory, pkgSaleInfo, afterBookingFreeCancelTime, 
+        CancelPolicyNewType, child_tag_checkin, child_tag_meal, combined_room_info, 
+        recommendtype, noprice, vendorid, xpkg_id, xpkg_type, meal_prompt_tag, rm_taglist, 
+        coins_quantity, is_extra_coins, roomrecommend_status, iscompensate, incentiveTagList,rateid
+    from tmp_kwfu_table t
+    lateral view outer explode(udf.json_split(t.srmlist)) r as rm_json
+    lateral view json_tuple(rm_json,
+        'roomid', 'room_token', 'rm_dispatchid', 'isguessyoulike', 'fq_price', 'fh_price', 
+        'fh_price_total', 'fh_price_avg', 'tax', 'tax_total', 'tax_avg', 'cost', 'shadowid', 
+        'maskid', 'pkg_id', 'ishourroom', 'isbookable', 'bedtype', 'meal', 'mealnum', 'area', 
+        'cancelpolicy', 'iscomfirm', 'roomperson', 'comfirmhour', 'guaranteetype', 'paytype', 
+        'promotionlist', 'filterlist', 'age', 'smokeinfo', 'cancelpriceinfo', 'showpriceinfo', 
+        'showwithtaxpriceinfo', 'deduct', 'refund', 'iswifi', 'confirmpolicy', 'minstartrooms', 
+        'maxstartrooms', 'windowinfo', 'isfullapply', 'roomtype', 'exchange', 'floorpiece', 
+        'fh_price_avg_alltax', 'fh_price_total_alltax', 'rateplanid', 'currency', 'showtype', 'guestsnum', 
+        'isVeilDiffPriceZero', 'sceneType', 'isroomlist', 'ismeta_show', 'roomtag', 
+        'prepayDiscountList', 'cost_promotion', 'remainRoomQuantity', 'rank', 'mealType', 
+        'basicroomid', 'is_start_room', 'ismultiroomrecommend', 'recommend_roomnum', 
+        'isentityroom', 'packagecontent', 'cancelPolicyType', 'cancelpolicy_desc', 
+        'cancelLadderDetails', 'is_presale_frontload', 'presale_pkgid', 'presale_price', 
+        'roomperson_adult', 'roomperson_child', 'entityroom_desc', 'iscombine_ser', 
+        'avgprice_beforetax', 'isMaskRoom', 'bedtypeCategory', 'pkgSaleInfo', 
+        'afterBookingFreeCancelTime', 'CancelPolicyNewType', 'child_tag_checkin', 
+        'child_tag_meal', 'combined_room_info', 'recommendtype', 'noprice', 'vendorid', 
+        'xpkg_id', 'xpkg_type', 'meal_prompt_tag', 'rm_taglist', 'coins_quantity', 
+        'is_extra_coins', 'roomrecommend_status', 'iscompensate', 'incentiveTagList','rateid'
+    ) jt as roomid, room_token, rm_dispatchid, isguessyoulike, fq_price, fh_price, 
+        fh_price_total, fh_price_avg, tax, tax_total, tax_avg, cost, shadowid, maskid, 
+        pkg_id, ishourroom, isbookable, bedtype, meal, mealnum, area, cancelpolicy, 
+        iscomfirm, roomperson, comfirmhour, guaranteetype, paytype, promotionlist, 
+        filterlist, age, smokeinfo, cancelpriceinfo, showpriceinfo, showwithtaxpriceinfo, 
+        deduct, refund, iswifi, confirmpolicy, minstartrooms, maxstartrooms, windowinfo, 
+        isfullapply, roomtype, exchange, floorpiece, fh_price_avg_alltax, fh_price_total_alltax, 
+        rateplanid, currency, showtype, guestsnum, isVeilDiffPriceZero, sceneType, isroomlist, 
+        ismeta_show, roomtag, prepayDiscountList, cost_promotion, remainRoomQuantity, 
+        rank, mealType, basicroomid, is_start_room, ismultiroomrecommend, recommend_roomnum, 
+        isentityroom, packagecontent, cancelPolicyType, cancelpolicy_desc, cancelLadderDetails, 
+        is_presale_frontload, presale_pkgid, presale_price, roomperson_adult, roomperson_child, 
+        entityroom_desc, iscombine_ser, avgprice_beforetax, isMaskRoom, bedtypeCategory, 
+        pkgSaleInfo, afterBookingFreeCancelTime, CancelPolicyNewType, child_tag_checkin, 
+        child_tag_meal, combined_room_info, recommendtype, noprice, vendorid, xpkg_id, 
+        xpkg_type, meal_prompt_tag, rm_taglist, coins_quantity, is_extra_coins, 
+        roomrecommend_status, iscompensate, incentiveTagList,rateid
+)
+
+-- ============================================================
+-- PART 2: Main Logic (Derived from dml-5.txt)
+-- ============================================================
+
+insert overwrite table dw_htlbizdb.edw_traf_ht_server_trip_rmlist_server_ser_hour partition (d,h)
+select
+    t.event_id
+    ,t.key
+    --渠道app/online/h5
+    ,t.channeltype
+    ,t.starttime --埋点触发时间
+    ,t.cid --  用户设备标识
+    ,t.uid--用户id
+    --online  vid cid 是一个东西
+    ,case when channeltype='online' and nvl(t.vid,'')='' then t.cid else t.vid end as vid --用户唯一标识，主要是非app统计用户数用
+    ,t.pvid --页面自增长ID
+    ,t.sid --会话ID
+    ,t.page  --页面ID/CODE
+    ,t.appversion --客户端app版本号
+    ,t.checkin --入住日期
+    ,t.checkout --离店日期
+    ,t.rmlist_tracelogid
+    ,t.roomnum  --房间数
+    ,case when t.adultnum='0' then '1' else t.adultnum end as adultnum--成人数
+    ,t.childnum  --儿童数
+    ,t.allianceid
+    ,t.alliancesiteid
+    ,t.locale
+    --房型相关属性
+    ,t.roomid --售卖房型ID
+    ,t.room_token --售卖房型Token，售卖房型唯一标识
+    ,t.rm_dispatchid --售卖房型排序服务id
+    ,t.isguessyoulike --标识是否是猜您喜欢房型，T/F
+    ,t.fq_price --起价房型的划线价，也即优惠前价格
+    ,t.fh_price --起价房型的页面实际展示价格，含税
+    ,t.fh_price_total --多间多晚的总价（折后）
+    ,t.fh_price_avg   -- 一间一晚的均价（折后）
+    ,t.tax --税费
+    ,t.tax_total --多间多晚的总
+    ,t.tax_avg --一间一晚的均
+    ,t.cost 
+    -- 底价（不含促销）
+    ,t.shadowid --马甲ID（废弃）
+    ,t.maskid --面纱房型ID
+    ,cast(t.pkg_id as int) as pkg_id --套餐ID 原值有'null' jkyang 2023-07-13
+    ,t.ishourroom --是否钟点房，T/F
+    ,t.isbookable --是否可订，T/F
+    ,t.bedtype --床型
+    ,t.meal -- 餐食信息
+    ,t.mealnum --餐食份数
+    ,t.area --面积信息
+    ,t.cancelpolicy --取消政策信息 T:免费取消 F:不可取消 P:阶梯取消 L:限时取消
+    ,t.iscomfirm --是否立即确认，T/F
+    ,t.roomperson --售卖房型可入住人数
+    ,t.comfirmhour --确认时长
+    ,t.guaranteetype --担保类型
+    ,t.paytype --支付方式，枚举值：PP：预付，FG：现付
+    ,t.promotionlist --促销优惠信息汇总   
+    ,t.filterlist --筛选项,记录组合条件
+    ,coalesce(r.masterhotelid,t.masterhotelid) as masterhotelid --母酒店ID
+    ,t.age --多个年龄用|隔开
+    ,t.smokeinfo -- 吸烟信息展示。1：可吸烟；2：不可吸烟；3：其他
+    ,t.cancelpriceinfo --划线价原价
+    ,t.showpriceinfo --显示的价格信息
+    ,t.showwithtaxpriceinfo --显示含税的价格信息
+    ,t.deduct --立减金额
+    ,t.refund --返现金额
+    ,t.iswifi --是否有wifi。1：是；0：否
+    ,t.confirmpolicy --确认政策类别。1：立即确认；0：非立即确认
+    ,t.minstartrooms --房型最小起订间数
+    ,t.maxstartrooms --房型最大起订间数
+    ,t.windowinfo --窗户信息。1：有窗；0：无窗
+    ,t.isfullapply --是否满房。1：是；0；否
+    ,t.roomtype --售卖房型类型
+    ,t.currency --币种，示例：CNY
+    ,t.exchange --汇率
+    ,t.floorpiece --楼层
+    ,r.masterbasicroomid  
+    --母基房型id
+    ,r.hotelid    --售卖酒店id
+    ,r.star        as m_star
+    ,r.cityid      as m_city
+    ,r.countryid   as m_country
+    --2022-10-20 kw.fu 新增
+    ,t.fh_price_avg_alltax   -- 一间一晚的均价（折后）
+    ,t.fh_price_total_alltax --多间多晚的总价（折后）
+    --2022-10-24 kw.fu 新增
+    ,ROW_NUMBER() OVER (PARTITION BY t.cid,t.vid,t.roomid,t.rateplanid,t.room_token,t.rmlist_tracelogid,t.ismultiroomrecommend ORDER BY t.starttime desc ) AS q_rnk
+    --2022-11-14 kw.fu 新增
+    ,t.is_meta
+    ,t.rateplanid 
+    -- 一间一晚的均价（折后）
+    ,t.isnoprice
+    ,e.exchange as exchange_rmb --浏览币种对应的rmb汇率
+    --2023-01-29 kw.fu 新增
+    ,t.showtype   --价格显示体系：0-单间夜不含税均价、1-总价 ，2-单间夜含税均价 ，3CMA总价，4-每间多晚含税
+    ,t.userip
+    ,t.guestsnum
+    ,t.user_level
+    -- 2023-03-09
+    ,t.isVeilDiffPriceZero
+    --2023-03-15
+    ,t.sceneType
+    ,t.isroomlist
+    ,t.childage
+    ,t.hotelpriceroomid
+    ,t.hotelprice
+    ,t.sourcetype
+    ,t.ismeta_show
+    ,null as confirmpolivy -- 废弃  
+    -- 2023-04-12 dzl添加
+    ,t.roomtag 
+    --2023-05-05 kw.fu 新增
+    ,t.ouid
+    ,t.prepayDiscountList --促销信息List 
+    ,t.cost_promotion --促销后的底价
+     --2023-05-19 kw.fu 新增
+    ,t.remainRoomQuantity --房型剩余间数(即库存)
+    ,t.rank --房型排序，服务端下发的rank值，rank值越大，排序越靠前
+    ,t.mealType --餐食类型
+    ,t.basicroomid --物理房型id
+    -- 2023-06-01
+    ,t.is_start_room         -- 是否是起价房型
+    -- 2023-07-21 wsc
+    ,t.ismultiroomrecommend         -- 是否是组合房型T/F
+    ,t.recommend_roomnum      
+    -- 组合推荐的间数
+    ,t.datacenter
+    -- 2023-07-28 yangjk
+    ,t.isentityroom -- 是否权益云房型
+    ,t.packagecontent -- 套餐内容
+    -- 2023-07-28 zyzhao
+    ,t.cancelPolicyType -- 取消类型(数字enum)
+    ,t.cancelpolicy_desc  -- 取消政策（文字）
+    -- 2023-08-01 zyzhao
+    ,t.cancelLadderDetails --取消阶梯政策
+    ,t.is_presale_frontload --是否预售前置 T/F
+    ,t.presale_pkgid --预售前置套餐id
+    ,t.presale_price --预售前置套餐价格
+    -- 2023-08-03 kw.fu
+    ,t.couponinfo --优惠券信息list
+    ,t.roomperson_adult --房型卡片上的成人数
+    ,t.roomperson_child --房型卡片上的儿童数
+    ,t.entityroom_desc --权益内容字段（包含早餐和取消政策两类内容)
+    -- 2023-09-14 zyzhao
+    ,t.iscombine_ser -- 服务端关联
+    ,t.mergedRoomInfos -- 合并房型信息List
+    -- 2023-12-08 曾金平
+    ,t.meta_roomid    -- #投放房型的roomid
+    ,t.isvalid_case    -- #是否是有效case，字段未埋就是有效，无效则埋具体无效原因
+    ,t.meta_avgprice    -- #投放的税前均价
+    ,t.meta_totalprice --#投放的税后总价
+    ,t.avgprice_beforetax    -- 集成的税前均价
+    -- 2023-12-27 zyzhao
+    ,t.isMaskRoom --是否遮价面纱房型T/F
+    ,t.org_rmlist
+    ,t.is_spider
+    --2024-01-25 kw.fu 
+    ,t.source_id
+    --2024-01-29 zyzhao
+    ,t.bedtypeCategory
+    --2024-02-06 kw.fu
+    ,t.time_gap
+    ,t.hotelroomtype
+    ,t.hoteldeleteprice
+    ,t.hotelpriceroomtoken
+    ,t.pre_masterhotelid_tracelogid
+    ,r.goldstar as m_goldstar
+    ,t.is_landdtl 
+    ,t.meta_vendorid 
+    ,t.pkgSaleInfo
+    --2024-07-05 kw.fu 
+    ,t.afterBookingFreeCancelTime
+    ,t.CancelPolicyNewType
+    ,t.child_tag_checkin
+    ,t.child_tag_meal
+    ,t.combined_room_info
+    ,t.recommendtype
+    ,t.noprice
+    ,t.spider_type
+    ,t.vendorid
+    --2024-10-10 kw.fu 新增
+    ,t.xpkg_id       as xpkg_id
+    ,t.xpkg_type   as xpkg_type
+    ,t.meal_prompt_tag   as meal_prompt_tag
+    --2024-10-28 kw.fu 新增
+    ,t.rm_taglist   as rm_taglist
+    ,t.coins_quantity   as coins_quantity
+    ,t.is_extra_coins   as is_extra_coins
+    ,t.is_CaliforniaPrice
+    ,t.roomrecommend_status
+    ,t.iscompensate
+    ,t.fullroom_reason
+    ,t.bookableDateList
+    ,t.filterlist_main
+    ,t.showtype_main
+    ,t.incentiveTagList
+    ,t.is_includetaxpayhotel
+    ,t.meta_rateid
+    ,t.meta_rateplanid
+    ,t.rateid
+    --动态分区 加字段请在上面
+    ,t.d
+    ,t.h
+from exploded_data t
+left join (
+    select distinct
+        isocode 
+        ,exchange
+    from ods_htl_ProductDB.Currency_DBRepl --    13125
+    where d ='${zdt.addDay(0).format("yyyy-MM-dd")}'
+) e on lower(t.currency)=lower(e.isocode)
+left join dw_htlbizdb.v_dim_traf_room_htl_df r on t.roomid=r.roomid
+;
+
+-- ============================================================
+-- PART 3: Independent Second Query (Originally part of dml-5.txt)
+-- ============================================================
+
+insert overwrite table dwhtl.adm_svr_sqty_user_tour_trial_df partition(tag_1st, tag_2nd,d)
+
+select 	 t1.d as `date`
+		,tt.weekofyear as `week` 
+        ,tt.`month`
+      	,tt.`quarter`
+      	,tt.`year` 
+		,qa.qa_cycle as `qa_week` 
+      	,qa.month as `qa_month` 
+      	,qa.year as `qa_year`
+        ,coalesce(t3.is_agent,-1) as is_agent
+        ,-1 as custype
+        ,coalesce(t3.mbrship_level,-1) as mbrship_level
+        ,coalesce(t3.user_star,-1) as user_star
+        ,coalesce(t3.cus_city_level,-1) as cus_city_level
+        ,coalesce(t3.age_stage,-1) as age_stage
+        ,coalesce(t3.gender,-1) as gender
+        ,-1	as star	
+        ,-1 as star_level
+        ,-1 as ppp
+        -- ,coalesce(tc.global_type,-1) as global_type
+        ,case when tc.global_type='cn' then 1
+              when tc.global_type = 'en' then 3
+              when tc.global_type = 'hmt' then 2
+              else -1
+        end as global_type
+        
+        ,coalesce(tc.continent,-1) as continent_id
+        ,coalesce(tc.country,-1) as country_id
+        ,coalesce(tc.province,-1) as province_id
+        ,coalesce(tc.pcityid,-1) as pcity_id
+        ,coalesce(t1.cityid,-1) as city_id
+        ,coalesce(tc.areaname,'无法区分') as region3rd_name
+        ,coalesce(tc.warareaname,'无法区分') as region_name
+        ,'无法区分' as level
+        ,-1	as is_new_open_prpt	
+        -- ,coalesce(tc.pcitylevel,-1) as city_level
+        
+        ,case when tc.pcitylevel ='其他' then 0
+                when tc.pcitylevel ='新一线' then 1
+                when tc.pcitylevel ='一线' then 2
+                when tc.pcitylevel ='二线' then 3
+                when tc.pcitylevel ='三线' then 4
+                when tc.pcitylevel ='四线' then 5
+                when tc.pcitylevel ='五线' then 6
+                when tc.pcitylevel = '五线以下' then 7
+                else -1
+        end as city_level
+        ,-1 as is_standard
+        ,-1 as chain_id
+        ,-1 as is_cfh
+        ,-1 as invt_class
+        ,-1 as pay_type
+        ,-1 as fastpass
+        ,-1 as cxlpolicy
+        ,-1 as invoice_way
+        ,-1 as svr_level
+        ,-1 as send_type
+        ,-1 as leadtime
+        ,-1 as adr_range
+        ,-1 as bk_chl
+        ,1 as is_tcom		-- trip
+        ,'无法区分' as site
+        ,'无法区分' as site_eur
+        ,'无法区分' as locale
+        ,-1 as is_weehourroom_ord
+        ,-1 as is_multi_rn_ord
+        ,-1 as is_multidays_ord
+        ,-1 as is_latecheckout_ord
+        ,-1 as tour_type
+        ,-1 as is_nlocal_ord
+        ,-1 as is_abroad_ord
+        ,-1 as is_cross_ord
+        ,coalesce(zy.process,'无法区分') as process
+        ,'' as user_experience_1st
+        ,'' as user_experience_2nd
+        ,-1 as user_request
+        ,-1 as svr_target
+        ,-1 as user_emotion
+        ,-1 as svr_able
+        ,-1 as handle_rslt
+        ,-1 as issue_pg
+        ,-1 as issue_relation
+        ,-1 as issue_type
+        ,-1 as issue_reason
+        ,-1 as issue_inq
+  		,sum(t1.pv) as pv
+  		,-1 as deno
+        ,-1					  										as nume_1st
+        ,-1															as deno_1st
+        ,-1															as user_source
+        ,coalesce(zy1.tag_id,9999)               as user_experience_id
+        
+        ,coalesce(extra_user_info,'{}') as extra_user_info
+        ,'{}' as extra_prpt_info
+        ,'{}' as extra_ord_info
+        
+        ,'SXDJL' as tag_1st
+        ,'SXDJL' as tag_2nd
+        ,'${zdt.addDay(-0).format("yyyy-MM-dd")}' as d
+from (     
+    select t1.uid,t1.cityid,t1.d,count(distinct t1.cid) as pv
+    from (
+        -- 1
+        select cid,sid,pvid,regionid as cityid,uid,d
+        from dw_htlbizdb.edw_traf_ht_key_list_filter_sorttype_click_day
+        where regiontype=1
+        and page=10320607445
+        union all
+        select cid,sid,pvid,b.geoid as cityid,a.uid,a.d
+        from dw_htlbizdb.edw_traf_ht_key_list_filter_sorttype_click_day a
+        join ods_htl_htlinfopediadb.poi b on a.regionid=b.id and b.geocategoryid=3 and b.d='${zdt.addDay(-1).format("yyyy-MM-dd")}'
+        where a.regiontype=4
+        and page=10320607445
+        -- 2
+        union all
+        select cid,sid,pvid,cityid,uid,d
+        from dw_htlbizdb.edw_traf_ht_key_listpage_filterpage_location_click_day 
+        where page in (10320607445,10320664776)
+        union all 
+        select a.cid,a.sid,a.pvid,b.geoid as cityid,a.uid,a.d
+        from dw_htlbizdb.edw_traf_ht_key_listpage_filterpage_location_click_day a
+        join ods_htl_htlinfopediadb.poi b on a.regionid=b.id and b.geocategoryid=3 and b.d='${zdt.addDay(-1).format("yyyy-MM-dd")}'
+        where a.regiontype=4
+        and a.page in (10320607445,10320664776)
+        -- 3
+        union all
+        select cid,sid,pvid,cityid,uid,d
+        from dw_htlbizdb.edw_traf_ht_key_listpage_filterpage_click_day
+        where regiontype=1
+        and page=10320607445
+        union all
+        select a.cid,a.sid,a.pvid,b.geoid as cityid,a.uid,a.d
+        from dw_htlbizdb.edw_traf_ht_key_listpage_filterpage_click_day a
+        join ods_htl_htlinfopediadb.poi b on a.regionid=b.id and b.geocategoryid=3 and b.d='${zdt.addDay(-1).format("yyyy-MM-dd")}'
+        where a.regiontype=4
+        and a.page=10320607445
+    ) t1
+    join dim_hoteldb.dimcity tc
+    on t1.cityid=tc.cityid
+    and tc.currentflag='T'
+    where substr(t1.d,1,4) not in ('2020','2021','2022')
+    and t1.d >='2019-01-01'
+    group by t1.uid,t1.cityid,t1.d
+) t1  -- 分子
+
+join dim_hoteldb.dimcity tc
+on t1.cityid=tc.cityid
+and tc.currentflag='T'
+
+left join dwhtl.dimdate tt
+on to_date(t1.d) = tt.date
+
+left join dwhtl.dim_htl_svr_qacycle_lkp qa
+on qa.date = to_date(t1.d)
+
+left join dwhtl.dim_svr_sqty_tour_trial_user_tag_df t3
+on lower(t1.uid) = lower(t3.user_id)
+and t3.d = '${zdt.addDay(0).format("yyyy-MM-dd")}'
+
+left outer join 
+(
+    select *
+            ,row_number() over(partition by idx order by version desc) as rk
+    from dwhtl.ods_data_upload_new_insights_idx_process__experiencetag_mapping_backlog
+    where version = 2 
+    having rk = 1
+) zy
+on 1=1 
+and zy.idx = 'SXDJL'
+
+left join (
+    select *
+            ,rank() over(order by version desc) as rk
+    from dwhtl.ods_data_upload_new_insights_process__experiencetag_mapping_backlog
+    having rk = 1
+) zy1
+on zy.tag_id = zy1.tag_id 
+
+group by  t1.d
+		,tt.weekofyear 
+        ,tt.`month`
+      	,tt.`quarter`
+      	,tt.`year` 
+		,qa.qa_cycle 
+      	,qa.month
+      	,qa.year 
+        ,coalesce(t3.is_agent,-1) 
+        ,coalesce(t3.mbrship_level,-1) 
+        ,coalesce(t3.user_star,-1) 
+        ,coalesce(t3.cus_city_level,-1) 
+        ,coalesce(t3.age_stage,-1)
+        ,coalesce(t3.gender,-1) 
+
+        ,case when tc.global_type='cn' then 1
+              when tc.global_type = 'en' then 3
+              when tc.global_type = 'hmt' then 2
+              else -1
+        end
+        ,coalesce(tc.continent,-1) 
+        ,coalesce(tc.country,-1) 
+        ,coalesce(tc.province,-1)
+        ,coalesce(tc.pcityid,-1)
+        ,coalesce(t1.cityid,-1) 
+        ,coalesce(tc.areaname,'无法区分') 
+        ,coalesce(tc.warareaname,'无法区分') 
+        ,case when tc.pcitylevel ='其他' then 0
+                when tc.pcitylevel ='新一线' then 1
+                when tc.pcitylevel ='一线' then 2
+                when tc.pcitylevel ='二线' then 3
+                when tc.pcitylevel ='三线' then 4
+                when tc.pcitylevel ='四线' then 5
+                when tc.pcitylevel ='五线' then 6
+                when tc.pcitylevel = '五线以下' then 7
+                else -1
+        end
+        ,coalesce(zy.process,'无法区分')
+        ,coalesce(zy1.tag_id,9999) 
+        ,coalesce(extra_user_info,'{}');

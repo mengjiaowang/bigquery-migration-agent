@@ -150,6 +150,30 @@ export function updateResultCards(result) {
     }
 }
 
+export function resetStatusCards() {
+    const statuses = [
+        'sparkStatus',
+        'convertStatus',
+        'bqStatus',
+        'executionStatus',
+        'dataVerificationStatus'
+    ];
+    
+    statuses.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = '-';
+            element.className = 'status-card-value pending';
+        }
+    });
+
+    // Clear SQL output
+    const bqOutput = document.getElementById('bqOutput');
+    if (bqOutput) {
+        bqOutput.textContent = '转换结果将在这里显示';
+    }
+}
+
 export function loadSample(sampleSql) {
     document.getElementById('sparkSql').value = sampleSql;
     addLog('info', '已加载示例 SQL');
