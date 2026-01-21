@@ -19,26 +19,26 @@
 
 ## 📋 详细统计表
 
-| 文件名 | 类型 | 结果 | BigQuery 验证 | 重试次数 | 耗时 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `ddl-1-1-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 | 25.24s |
-| `ddl-1-2-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 | 14.42s |
-| `ddl-1-3-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 1 | 44.34s |
-| `ddl-1-4-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 1 | 42.68s |
-| `ddl-1-5-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 | 28.55s |
-| `ddl-1-6-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 | 9.34s |
-| `ddl-alterview-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 | 11.64s |
-| `dml-1-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 3 | 60.44s |
-| `dml-2-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 | 70.02s |
-| `dml-3-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 5 | 702.00s |
-| `dml-4-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 3 | 98.29s |
-| `dml-5-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 4 | 374.04s |
-| `dml-6-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 | 22.41s |
-| `sql-01-0120.txt` | SQL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 5 | 142.14s |
-| `sql02-0120.txt` | SQL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 2 | 169.34s |
+| 文件名 | 类型 | 结果 | BigQuery 验证 | 重试次数
+| :--- | :--- | :--- | :--- | :--- |
+| `ddl-1-1-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 
+| `ddl-1-2-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 
+| `ddl-1-3-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 1 
+| `ddl-1-4-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 1 
+| `ddl-1-5-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 
+| `ddl-1-6-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0
+| `ddl-alterview-0120.txt` | DDL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 
+| `dml-1-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 3 
+| `dml-2-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 
+| `dml-3-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 5 
+| `dml-4-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 3 
+| `dml-5-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 4 
+| `dml-6-0120.txt` | DML | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 0 
+| `sql-01-0120.txt` | SQL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 5 
+| `sql02-0120.txt` | SQL | <span style="color:green">✓ 成功</span> | <span style="color:green">✓ 通过</span> | 2 
 
 ## 💡 分析摘要
 
 1. **高成功率**：所有 15 个任务均成功转换并通过了 BigQuery Dry Run 校验。
-2. **复杂任务耗时**：`dml-3-0120.txt` 和 `dml-5-0120.txt` 耗时较长（分别约 11 分钟和 6 分钟）且重试次数较多（4-5次），表明这两个 SQL 逻辑较复杂，触发了多次自动修复。
+2. **复杂任务耗时**：`dml-3-0120.txt` 和 `dml-5-0120.txt` 重试次数较多（4-5次），因为这两个 SQL 逻辑较复杂，触发了多次自动修复。
 3. **DDL 效率高**：大部分 DDL 任务在 1 分钟内完成，且重试较少。
