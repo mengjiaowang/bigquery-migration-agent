@@ -32,33 +32,6 @@ The core of the system is a stateful graph-based agent implemented with `LangGra
 5.  **Execute**: Runs the valid BigQuery SQL (e.g., creating a target table).
 6.  **Verify Data**: Compares execution results against "Ground Truth" tables using row count or full content comparison.
 
-## 📂 Project Structure
-
-```
-trans/
-├── requirements.txt          # Dependencies
-├── env.example              # Environment variables example
-├── src/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI Entry point
-│   ├── agent/
-│   │   ├── __init__.py
-│   │   ├── graph.py         # LangGraph workflow definition
-│   │   ├── state.py         # Agent state definition
-│   │   └── nodes.py         # Node implementations
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── bigquery.py      # BigQuery Dry Run service
-│   │   ├── llm.py           # LLM service (Gemini)
-│   │   └── validation.py    # Validation service
-│   ├── prompts/
-│   │   ├── __init__.py
-│   │   └── templates.py     # Prompt templates
-│   └── schemas/
-│       ├── __init__.py
-│       └── models.py        # Pydantic models
-└── README.md
-```
 
 ## 🚀 Installation
 
