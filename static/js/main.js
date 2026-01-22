@@ -5,25 +5,43 @@ import * as UI from './ui.js';
 let isConverting = false;
 let lastConversionResult = null;
 
-const SAMPLE_SQL = `WITH daily_orders AS (
-    SELECT 
-        to_date(order_time) AS order_date,
-        customer_id,
-        SUM(amount) AS daily_amount,
-        COUNT(*) AS order_count
-    FROM orders
-    WHERE order_time >= date_sub(current_date(), 30)
-    GROUP BY to_date(order_time), customer_id
-)
-SELECT 
-    customer_id,
-    AVG(daily_amount) AS avg_daily_spend,
-    SUM(order_count) AS total_orders,
-    collect_list(order_date) AS order_dates
-FROM daily_orders
-GROUP BY customer_id
-ORDER BY avg_daily_spend DESC
-LIMIT 100`;
+const SAMPLE_SQL = `CREATE OR REPLACE TABLE original_target_table
+AS
+WITH
+  ExperimentCounts AS (
+    SELECT
+      experiment_id,
+      experiment_variant_id,
+      COUNT(DISTINCT user_pseudo_id) AS user_count,
+      SUM(COUNT(DISTINCT user_pseudo_id))
+        OVER (PARTITION BY experiment_id) AS total_users_in_experiment
+    FROM
+      abtest
+    GROUP BY
+      experiment_id,
+      experiment_variant_id
+  ),
+  ExpectedCounts AS (
+    SELECT
+      experiment_id,
+      experiment_variant_id,
+      user_count,
+      total_users_in_experiment,
+      total_users_in_experiment / SUM(total_users_in_experiment)
+        OVER () AS expected_proportion,
+      SUM(user_count) OVER () AS total_users_overall
+    FROM
+      ExperimentCounts
+  )
+SELECT
+  experiment_id,
+  experiment_variant_id,
+  user_count,
+  total_users_in_experiment,
+  expected_proportion,
+  total_users_overall
+FROM
+  ExpectedCounts`;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
