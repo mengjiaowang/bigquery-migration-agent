@@ -1,6 +1,6 @@
-"""Prompt templates for Hive to BigQuery SQL conversion."""
+"""Prompt templates for Spark to BigQuery SQL conversion."""
 
-SPARK_VALIDATION_PROMPT = """You are a Hive SQL syntax expert. Validate if the following SQL is valid Hive SQL syntax.
+SPARK_VALIDATION_PROMPT = """You are a Spark SQL syntax expert. Validate if the following SQL is valid SQL syntax.
 
 ```sql
 {spark_sql}
@@ -33,11 +33,19 @@ The SQL may contain scheduling system macros/variables. These are VALID and shou
 These macros are runtime placeholders from the scheduling system. Treat them as valid string literals.
 
 Be strict on syntax, permissive on semantics (don't check if tables exist).
+
+Please note that spark allows using `having` clause after `select` clause
+```
+select *
+       ,row_number() over(...) as rk
+from ...
+having rk = 1
+```
 """
 
-SPARK_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Hive SQL to functionally equivalent BigQuery SQL.
+SPARK_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Spark SQL to functionally equivalent BigQuery SQL.
 
-## Input Hive SQL:
+## Input Spark SQL:
 ```sql
 {spark_sql}
 ```
@@ -54,13 +62,13 @@ SPARK_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Hive SQL
 ### ⚠️ Critical Syntax Differences (MUST READ)
 
 #### 1. GROUP BY GROUPING SETS - STRICT SYNTAX
-Hive allows listing columns before GROUPING SETS, but BigQuery FORBIDS it. You MUST remove the columns between GROUP BY and GROUPING SETS.
+Spark allows listing columns before GROUPING SETS, but BigQuery FORBIDS it. You MUST remove the columns between GROUP BY and GROUPING SETS.
 
-* ❌ Hive Style (Invalid in BQ): `GROUP BY a, b GROUPING SETS ((a, b), (a))`
+* ❌ Spark Style (Invalid in BQ): `GROUP BY a, b GROUPING SETS ((a, b), (a))`
 * ✅ BigQuery Style (Correct): `GROUP BY GROUPING SETS ((a, b), (a))`
 
 ### ⚠️ Variable Handling Strategy (MODE: NATIVE CONVERSION)
-**Goal: Convert ALL Hive scheduling macros into native BigQuery dynamic functions.**
+**Goal: Convert ALL Spark scheduling macros into native BigQuery dynamic functions.**
 
 You must translate Hive macros (like `${{zdt...}}`) into functionally equivalent BigQuery logic (`CURRENT_DATE()`, `DATE_SUB`, etc.).
 
@@ -86,21 +94,21 @@ When converting a macro inside quotes, you MUST **remove the surrounding quotes*
 #### 2. Comparison Context Handling
 **Scenario 1: Comparing to DATE Column (`d`, `dt`, `partition_date`)**
 If the macro represents a Date (yyyy-MM-dd), use the DATE-returning function directly.
-* Hive: `WHERE d = '${{zdt.format("yyyy-MM-dd")}}'`
+* Spark: `WHERE d = '${{zdt.format("yyyy-MM-dd")}}'`
 * BigQuery: `WHERE d = CURRENT_DATE()`
 
-* Hive: `WHERE d = '${{zdt.addDay(-1).format("yyyy-MM-dd")}}'`
+* Spark: `WHERE d = '${{zdt.addDay(-1).format("yyyy-MM-dd")}}'`
 * BigQuery: `WHERE d = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)`
 
 **Scenario 2: Comparing to STRING Column**
 If the macro represents a formatted String (e.g. yyyyMMdd), use `FORMAT_DATE`.
-* Hive: `WHERE str_col = '${{zdt.format("yyyyMMdd")}}'`
+* Spark: `WHERE str_col = '${{zdt.format("yyyyMMdd")}}'`
 * BigQuery: `WHERE str_col = FORMAT_DATE('%Y%m%d', CURRENT_DATE())`
 
 #### 3. Handling `SET hivevar` Variables
-Convert Hive variables to BigQuery Scripting (`DECLARE` / `SET`).
+Convert Spark variables to BigQuery Scripting (`DECLARE` / `SET`).
 
-**Hive Input:**
+**Spark Input:**
 ```sql
 set hivevar:start_date=${{zdt.addDay(-7).format("yyyy-MM-dd")}};
 SELECT * FROM t WHERE d >= '${{hivevar:start_date}}';
@@ -113,11 +121,11 @@ SELECT * FROM t WHERE d >= start_date; -- Note: No quotes around variable
 
 #### 4. Dynamic Table Names (Read vs Write)
 **Reading (SELECT): Use Wildcard**
-* Hive: `FROM table_${{zdt.format("yyyyMMdd")}}`
+* Spark: `FROM table_${{zdt.format("yyyyMMdd")}}`
 * BigQuery: `FROM \`project.dataset.table_*\` WHERE _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', CURRENT_DATE())`
 
 **Writing (INSERT/CREATE): Use EXECUTE IMMEDIATE**
-* Hive: `INSERT OVERWRITE TABLE table_${{zdt.format("yyyyMMdd")}} ...`
+* Spark: `INSERT OVERWRITE TABLE table_${{zdt.format("yyyyMMdd")}} ...`
 * BigQuery:
 ```sql
 DECLARE suffix STRING DEFAULT FORMAT_DATE('%Y%m%d', CURRENT_DATE());
@@ -127,7 +135,7 @@ EXECUTE IMMEDIATE FORMAT('''
 ```
 
 ### 1. Data Types
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | STRING | STRING |
 | INT, SMALLINT, TINYINT | INT64 |
@@ -143,10 +151,10 @@ EXECUTE IMMEDIATE FORMAT('''
 | STRUCT<...> | STRUCT<...> |
 
 #### 1.1 Implicit Type Conversion - CRITICAL for String-to-Number Comparisons
-Hive allows implicit type conversion (string compared to number), but BigQuery does NOT.
+Spark allows implicit type conversion (string compared to number), but BigQuery does NOT.
 You MUST explicitly convert using SAFE_CAST:
 
-| Hive Pattern | BigQuery Pattern |
+| Spark Pattern | BigQuery Pattern |
 |--------------|------------------|
 | `string_col > 0` | `SAFE_CAST(string_col AS INT64) > 0` |
 | `string_col >= 100` | `SAFE_CAST(string_col AS INT64) >= 100` |
@@ -154,7 +162,7 @@ You MUST explicitly convert using SAFE_CAST:
 | `string_col < 10.5` | `SAFE_CAST(string_col AS FLOAT64) < 10.5` |
 | `string_col BETWEEN 1 AND 10` | `SAFE_CAST(string_col AS INT64) BETWEEN 1 AND 10` |
 
-**Common ID Columns that are STRING in Hive but compared to numbers:**
+**Common ID Columns that are STRING in Spark but compared to numbers:**
 - `masterhotelid`, `hotel`, `hotelid`
 - `cityid`, `city`, `countryid`, `country`
 - `country_flag`, `status`, `type`
@@ -162,7 +170,7 @@ You MUST explicitly convert using SAFE_CAST:
 
 Example:
 ```sql
--- Hive (allows implicit conversion):
+-- Spark (allows implicit conversion):
 SELECT * FROM hotels 
 WHERE masterhotelid > 0 
   AND cityid = 1 
@@ -184,10 +192,10 @@ WHERE SAFE_CAST(masterhotelid AS INT64) > 0
 **Rules:**
 1. NEVER apply `PARSE_DATE()` or `STR_TO_DATE()` to the column `d` itself
 2. Cast the comparison VALUE (string/variable) to DATE, not the column
-3. When comparing to DATE columns with Hive variables like `${{zdt...}}`, wrap the variable in `DATE()`
-4. When comparing to TIMESTAMP columns (like `updatedt`) with Hive variables, wrap the variable in `TIMESTAMP()` or `SAFE_CAST(... AS TIMESTAMP)`
+3. When comparing to DATE columns with Spark variables like `${{zdt...}}`, wrap the variable in `DATE()`
+4. When comparing to TIMESTAMP columns (like `updatedt`) with Spark variables, wrap the variable in `TIMESTAMP()` or `SAFE_CAST(... AS TIMESTAMP)`
 
-| Hive Pattern | BigQuery Pattern |
+| Spark Pattern | BigQuery Pattern |
 |--------------|------------------|
 | `WHERE d = '2024-01-01'` | `WHERE d = DATE('2024-01-01')` |
 | `WHERE d = '${{zdt.format("yyyy-MM-dd")}}'` | `WHERE d = DATE('${{zdt.format("yyyy-MM-dd")}}')` |
@@ -215,7 +223,7 @@ WHERE updatedt >= TIMESTAMP('${{zdt.format("yyyy-MM-dd")}}')
 ```
 
 ### 2. Date/Time Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | date_format(date, 'yyyy-MM-dd') | FORMAT_DATE('%Y-%m-%d', date) |
 | date_format(date, 'yyyy-MM-dd HH:mm:ss') | FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S', ts) |
@@ -247,7 +255,7 @@ WHERE updatedt >= TIMESTAMP('${{zdt.format("yyyy-MM-dd")}}')
 | trunc(date, 'YYYY') | DATE_TRUNC(date, YEAR) |
 
 ### 3. String Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | concat(a, b, ...) | CONCAT(a, b, ...) |
 | concat_ws(sep, a, b, ...) | ARRAY_TO_STRING([a, b, ...], sep) |
@@ -278,7 +286,7 @@ WHERE updatedt >= TIMESTAMP('${{zdt.format("yyyy-MM-dd")}}')
 **BigQuery requires raw string (r-prefix) for regex patterns with escape sequences!**
 
 ```sql
--- Hive (escaped backslash):
+-- Spark (escaped backslash):
 regexp_replace(col, '\\d', 'X')
 regexp_replace(col, '\\s+', ' ')
 
@@ -286,7 +294,7 @@ regexp_replace(col, '\\s+', ' ')
 REGEXP_REPLACE(col, r'\d', 'X')
 REGEXP_REPLACE(col, r'\s+', ' ')
 
--- Hive:
+-- Spark:
 regexp_extract(str, '\\d{{4}}', 0)
 
 -- BigQuery:
@@ -296,14 +304,14 @@ REGEXP_EXTRACT(str, r'\d{{4}}')
 **Rule**: When converting regex patterns with escape sequences (`\d`, `\s`, `\w`, etc.), use `r'pattern'` (raw string) instead of `'pattern'`.
 
 #### 3.2 ARRAY_TO_STRING / CONCAT_WS Type Handling - CRITICAL
-**BigQuery's `ARRAY_TO_STRING` (Hive `concat_ws`) requires ALL array elements to be STRING.**
+**BigQuery's `ARRAY_TO_STRING` (Spark `concat_ws`) requires ALL array elements to be STRING.**
 If you are concatenating numbers, you MUST cast them to STRING inside the array!
 
-* Hive: `concat_ws('-', year, month, day)` (year/month/day are INT)
+* Spark: `concat_ws('-', year, month, day)` (year/month/day are INT)
 * BigQuery: `ARRAY_TO_STRING([CAST(year AS STRING), CAST(month AS STRING), CAST(day AS STRING)], '-')`
 
 ### 4. Aggregate Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | count(*) | COUNT(*) |
 | count(distinct col) | COUNT(DISTINCT col) |
@@ -321,7 +329,7 @@ If you are concatenating numbers, you MUST cast them to STRING inside the array!
 | stddev_samp(col) | STDDEV_SAMP(col) |
 
 ### 5. Conditional & NULL Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | nvl(a, b) | IFNULL(a, b) or COALESCE(a, b) |
 | nvl2(expr, val1, val2) | IF(expr IS NOT NULL, val1, val2) |
@@ -335,7 +343,7 @@ If you are concatenating numbers, you MUST cast them to STRING inside the array!
 #### 5.1 NVL/COALESCE Type Matching - CRITICAL
 **BigQuery's COALESCE/IFNULL requires ALL arguments to have the SAME type!**
 
-Hive allows `nvl(numeric_col, '')` (numeric with empty string fallback), but BigQuery will throw:
+Spark allows `nvl(numeric_col, '')` (numeric with empty string fallback), but BigQuery will throw:
 `No matching signature for function COALESCE - Argument types: INT64, STRING`
 
 **Rules:**
@@ -357,7 +365,7 @@ Hive allows `nvl(numeric_col, '')` (numeric with empty string fallback), but Big
 
 Example:
 ```sql
--- Hive:
+-- Spark:
 SELECT nvl(star, ''), nvl(rating_score, ''), nvl(room_cnt, ''), nvl(hotel_name, '')
 
 -- BigQuery:
@@ -365,7 +373,7 @@ SELECT COALESCE(star, 0), COALESCE(rating_score, 0), COALESCE(room_cnt, 0), COAL
 ```
 
 ### 6. Math Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | abs(x) | ABS(x) |
 | ceil(x) / ceiling(x) | CEIL(x) |
@@ -385,7 +393,7 @@ SELECT COALESCE(star, 0), COALESCE(rating_score, 0), COALESCE(room_cnt, 0), COAL
 | sign(x) | SIGN(x) |
 
 ### 7. Array Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | size(array) | ARRAY_LENGTH(array) |
 | array_contains(arr, val) | val IN UNNEST(arr) |
@@ -397,17 +405,17 @@ SELECT COALESCE(star, 0), COALESCE(rating_score, 0), COALESCE(room_cnt, 0), COAL
 ### 8. Map and JSON Functions - CRITICAL for Complex DML
 
 #### 8.1 Map Construction (TO_JSON)
-Hive `map(k, v)` usually converts to a JSON object string in BigQuery.
-Use `TO_JSON(JSON_OBJECT(k, v))` to match Hive's string serialization of maps.
+Spark `map(k, v)` usually converts to a JSON object string in BigQuery.
+Use `TO_JSON(JSON_OBJECT(k, v))` to match Spark's string serialization of maps.
 
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | `map('k1', v1, 'k2', v2)` | `TO_JSON(JSON_OBJECT('k1', v1, 'k2', v2))` |
 | `map_keys(map)` | Extract via JSON functions |
 | `map_values(map)` | Extract via JSON functions |
 
 #### 8.2 Map Access (CRITICAL - Common Error Source)
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | `map_col['key']` | `JSON_VALUE(map_col, '$.key')` |
 | `map_col['0.05']` | `JSON_VALUE(map_col, '$."0.05"')` |
@@ -415,7 +423,7 @@ Use `TO_JSON(JSON_OBJECT(k, v))` to match Hive's string serialization of maps.
 
 Example:
 ```sql
--- Hive:
+-- Spark:
 case when t.price <= coalesce(city_price_map['0.05'],'') then 1 ... end
 
 -- BigQuery:
@@ -423,7 +431,7 @@ CASE WHEN t.price <= COALESCE(JSON_VALUE(city_price_map, '$."0.05"'), '') THEN 1
 ```
 
 #### 8.3 ARRAY<STRUCT<key, value>> Type (MAP converted to STRUCT array)
-**When Hive MAP is stored as `ARRAY<STRUCT<key STRING, value STRING>>` in BigQuery:**
+**When Spark MAP is stored as `ARRAY<STRUCT<key STRING, value STRING>>` in BigQuery:**
 
 **DO NOT use JSON_EXTRACT_SCALAR!** Use UNNEST with subquery:
 
@@ -432,7 +440,7 @@ CASE WHEN t.price <= COALESCE(JSON_VALUE(city_price_map, '$."0.05"'), '') THEN 1
 - `extra_user_info`
 - `srmlist`
 - `map_col`
-- Any column that was a MAP in Hive and migrated to BigQuery
+- Any column that was a MAP in Spark and migrated to BigQuery
 
 ```sql
 -- ❌ WRONG (ARRAY<STRUCT> is not JSON):
@@ -444,7 +452,7 @@ JSON_EXTRACT_SCALAR(map_col, '$.target_key')
 
 **Example with multiple key extractions:**
 ```sql
--- Hive (accessing map):
+-- Spark (accessing map):
 SELECT map_col['key1'], map_col['key2'], map_col['key3']
 
 -- BigQuery (when map_col is ARRAY<STRUCT<key, value>>):
@@ -461,7 +469,7 @@ If you see `coalesce(map_col, '{{}}')` or `nvl(map_col, '{{}}')`, and `map_col` 
 
 **Example:**
 ```sql
--- Hive:
+-- Spark:
 coalesce(extra_user_info, '{{}}')
 
 -- BigQuery (if extra_user_info is ARRAY<STRUCT>):
@@ -473,7 +481,7 @@ COALESCE(TO_JSON_STRING(extra_user_info), '{{}}')
 - If column type is `STRING` or `JSON` → use `JSON_VALUE` or `JSON_EXTRACT_SCALAR`
 
 #### 8.4 from_json / to_json Functions
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | `from_json(col, 'map<string,float>')` | `PARSE_JSON(col)` then use JSON_VALUE to access |
 | `from_json(col, 'struct<...>')` | `JSON_QUERY(col, '$')` |
@@ -482,7 +490,7 @@ COALESCE(TO_JSON_STRING(extra_user_info), '{{}}')
 
 #### 8.5 UDF to_json with map() - Complex Pattern
 ```sql
--- Hive:
+-- Spark:
 udf.to_json(map(
     'key1', value1,
     'key2', value2,
@@ -499,7 +507,7 @@ TO_JSON(JSON_OBJECT(
 
 #### 8.6 Nested JSON Access for Quantile Maps
 ```sql
--- Hive (accessing map with numeric string keys):
+-- Spark (accessing map with numeric string keys):
 case when price <= coalesce(price_map['0.05'],'') then 1
      when price <= coalesce(price_map['0.10'],'') then 2
      ...
@@ -516,7 +524,7 @@ END
 
 #### 9.1 Basic EXPLODE
 ```sql
--- Hive:
+-- Spark:
 SELECT id, item FROM t LATERAL VIEW explode(items) tmp AS item
 
 -- BigQuery:
@@ -524,7 +532,7 @@ SELECT id, item FROM t CROSS JOIN UNNEST(items) AS item
 ```
 
 ```sql
--- Hive (with position):
+-- Spark (with position):
 SELECT id, pos, item FROM t LATERAL VIEW posexplode(items) tmp AS pos, item
 
 -- BigQuery:
@@ -532,10 +540,10 @@ SELECT id, pos, item FROM t CROSS JOIN UNNEST(items) AS item WITH OFFSET AS pos
 ```
 
 #### 9.1.1 OUTER EXPLODE - CRITICAL
-**Hive's `OUTER` keyword preserves rows even when array is NULL or empty!**
+**Spark's `OUTER` keyword preserves rows even when array is NULL or empty!**
 
 ```sql
--- Hive (OUTER preserves rows with NULL/empty arrays):
+-- Spark (OUTER preserves rows with NULL/empty arrays):
 SELECT id, item FROM t LATERAL VIEW OUTER explode(items) tmp AS item
 
 -- BigQuery (use LEFT JOIN, NOT CROSS JOIN):
@@ -566,7 +574,7 @@ CROSS JOIN UNNEST(items) AS jt
 **For `LATERAL VIEW json_tuple()`, use direct JSON_EXTRACT_SCALAR in SELECT, NOT UNNEST!**
 
 ```sql
--- Hive:
+-- Spark:
 SELECT t.id, jt.name, jt.age
 FROM table t
 LATERAL VIEW json_tuple(t.json_col, 'name', 'age') jt AS name, age
@@ -584,7 +592,7 @@ FROM `table` t
 
 #### 9.4 Complex JSON Extraction
 ```sql
--- Hive (extracting many fields):
+-- Spark (extracting many fields):
 LATERAL VIEW json_tuple(data, 'field1', 'field2', 'field3', ...) jt 
     AS field1, field2, field3, ...
 
@@ -601,7 +609,7 @@ FROM table
 **BigQuery does NOT allow listing columns before `GROUPING SETS`!**
 
 ```sql
--- ❌ WRONG (Hive style):
+-- ❌ WRONG (Spark style):
 GROUP BY a, b GROUPING SETS ((a, b), (a), ())
 
 -- ✅ CORRECT (BigQuery style - remove 'a, b' after GROUP BY):
@@ -615,7 +623,7 @@ GROUP BY CUBE(a, b)
 ### 10.1 Window Functions
 Window functions are mostly the same, but note these differences:
 
-| Hive | BigQuery |
+| Spark | BigQuery |
 |------|----------|
 | `ROW_NUMBER() OVER (...)` | `ROW_NUMBER() OVER (...)` (same) |
 | `RANK() OVER (...)` | `RANK() OVER (...)` (same) |
@@ -646,7 +654,7 @@ WHERE rk = 1  -- ✓ Filter in outer WHERE clause
 
 **Common pattern to fix:**
 ```sql
--- Hive (sometimes allows HAVING on non-aggregates):
+-- Spark (sometimes allows HAVING on non-aggregates):
 SELECT col1, col2, rank() over(order by version desc) as rk
 FROM table
 HAVING rk = 1
@@ -659,11 +667,11 @@ SELECT * FROM (
 WHERE rk = 1
 ```
 
-### 10.3 LEFT ANTI JOIN / LEFT SEMI JOIN (Hive-specific)
+### 10.3 LEFT ANTI JOIN / LEFT SEMI JOIN (Spark-specific)
 **BigQuery does NOT support LEFT ANTI JOIN or LEFT SEMI JOIN syntax!**
 
 ```sql
--- Hive LEFT ANTI JOIN (returns rows from left that have NO match in right):
+-- Spark LEFT ANTI JOIN (returns rows from left that have NO match in right):
 SELECT t0.*
 FROM table_a t0
 LEFT ANTI JOIN table_b t1 ON t0.id = t1.id
@@ -683,7 +691,7 @@ WHERE NOT EXISTS (
 ```
 
 ```sql
--- Hive LEFT SEMI JOIN (returns rows from left that HAVE match in right):
+-- Spark LEFT SEMI JOIN (returns rows from left that HAVE match in right):
 SELECT t0.*
 FROM table_a t0
 LEFT SEMI JOIN table_b t1 ON t0.id = t1.id
@@ -713,7 +721,7 @@ For very long SQL with many columns:
 
 #### Pattern 1: USE + INSERT OVERWRITE
 ```sql
--- Hive:
+-- Spark:
 use dw_htlbizdb;
 insert overwrite table dw_htlbizdb.target partition (d = '${{zdt.format("yyyy-MM-dd")}}')
 select col1, col2, ... from source;
@@ -737,7 +745,7 @@ COMMIT TRANSACTION;
 
 #### Pattern 2: UDF to_json with Large Map
 ```sql
--- Hive:
+-- Spark:
 select udf.to_json(map(
     'key1', t.col1,
     'key2', t.col2,
@@ -756,7 +764,7 @@ FROM `t` LEFT JOIN `other_table` ...
 
 #### Pattern 3: Map Access in CASE WHEN (Quantile Calculation)
 ```sql
--- Hive:
+-- Spark:
 case when price <= coalesce(price_map['0.05'],'') then 1
      when price <= coalesce(price_map['0.10'],'') then 2
      else 0 end
@@ -769,7 +777,7 @@ CASE WHEN price <= COALESCE(SAFE_CAST(JSON_VALUE(price_map, '$."0.05"') AS FLOAT
 
 #### Pattern 4: from_json for Map Type
 ```sql
--- Hive:
+-- Spark:
 select from_json(col, 'map<string,float>') as parsed_map from t
 
 -- BigQuery:
@@ -779,7 +787,7 @@ SELECT PARSE_JSON(col) AS parsed_map FROM `t`
 
 #### Pattern 5: date_add with Negative Value
 ```sql
--- Hive:
+-- Spark:
 date_add(to_date(t.starttime), -1)
 
 -- BigQuery:
@@ -800,7 +808,7 @@ When converting multiple UNION ALL branches:
 - Wildcard `*` is ONLY valid in SELECT queries for reading data
 
 ```sql
--- Hive INSERT OVERWRITE:
+-- Spark INSERT OVERWRITE:
 INSERT OVERWRITE TABLE target_table SELECT ...
 
 -- BigQuery (use CREATE OR REPLACE):
@@ -808,7 +816,7 @@ CREATE OR REPLACE TABLE `target_table` AS SELECT ...
 ```
 
 ```sql
--- Hive ALTER VIEW:
+-- Spark ALTER VIEW:
 ALTER VIEW view_name AS SELECT ...
 
 -- BigQuery:
@@ -816,7 +824,7 @@ CREATE OR REPLACE VIEW `view_name` AS SELECT ...
 ```
 
 ```sql
--- Hive CREATE TABLE with partitioning:
+-- Spark CREATE TABLE with partitioning:
 CREATE TABLE t (...) PARTITIONED BY (dt STRING) STORED AS PARQUET
 
 -- BigQuery:
@@ -827,7 +835,7 @@ CREATE TABLE `t` (...) PARTITION BY dt
 #### 11.1 DDL with Dynamic Table Names (MUST use EXECUTE IMMEDIATE)
 When DDL target table name contains variables, you MUST use EXECUTE IMMEDIATE:
 ```sql
--- Hive:
+-- Spark:
 INSERT OVERWRITE TABLE db.result_${{hivevar:date_suffix}} SELECT ...
 
 -- BigQuery (WRONG - wildcard not allowed in DDL):
@@ -849,8 +857,8 @@ WHERE _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', CURRENT_DATE())
 ```
 
 #### 11.3 INSERT OVERWRITE with PARTITION - CRITICAL
-**Hive vs BigQuery Partition Handling:**
-- Hive: Partition column is specified in `PARTITION(col=val)` clause, NOT in SELECT list
+**Spark vs BigQuery Partition Handling:**
+- Spark: Partition column is specified in `PARTITION(col=val)` clause, NOT in SELECT list
 - BigQuery: Partition column MUST be included at the END of SELECT list
 
 **Rule: When converting `INSERT OVERWRITE TABLE ... PARTITION(p_col=val) SELECT cols...`:**
@@ -872,7 +880,7 @@ AS SELECT ...
 ```
 
 ```sql
--- Hive (partition column 'd' NOT in SELECT):
+-- Spark (partition column 'd' NOT in SELECT):
 INSERT OVERWRITE TABLE db.target_table PARTITION (d='${{zdt.format("yyyy-MM-dd")}}')
 SELECT 
     user_id,
@@ -896,7 +904,7 @@ WHERE dt = partition_date;
 
 **Another Example with static partition value:**
 ```sql
--- Hive:
+-- Spark:
 INSERT OVERWRITE TABLE result PARTITION (country='US', dt='2024-01-01')
 SELECT id, name, amount FROM orders;
 
@@ -913,7 +921,7 @@ FROM `project.dataset.orders`;
 
 **With Dynamic Partition (multiple partition values from data):**
 ```sql
--- Hive (dynamic partition):
+-- Spark (dynamic partition):
 INSERT OVERWRITE TABLE result PARTITION (dt)
 SELECT id, name, amount, order_date AS dt FROM orders;
 
@@ -923,8 +931,8 @@ PARTITION BY dt
 AS SELECT id, name, amount, order_date AS dt FROM `project.dataset.orders`;
 ```
 
-### 12. Hive-Specific Syntax to Remove/Convert
-| Hive | BigQuery |
+### 12. Spark-Specific Syntax to Remove/Convert
+| Spark | BigQuery |
 |------|----------|
 | `USE database;` | (remove entirely - not needed in BQ) |
 | `USE db_name;` | (remove - BQ uses fully qualified table names) |
@@ -940,7 +948,7 @@ AS SELECT id, name, amount, order_date AS dt FROM `project.dataset.orders`;
 
 #### 12.1 Subquery with MAX(d) Pattern
 ```sql
--- Hive:
+-- Spark:
 WHERE d = (SELECT max(d) FROM some_table)
 
 -- BigQuery (same syntax works):
@@ -998,7 +1006,7 @@ LEFT JOIN dim_hoteldb.dimroom r   -- dimroom is REAL
 
 **Real tables (need prefix):**
 ```sql
--- Hive:
+-- Spark:
 FROM dw_htlbizdb.orders
 FROM dim_hoteldb.v_dim_room_df
 
@@ -1035,16 +1043,16 @@ FROM `trip-htl-bi-dbprj.htl_bi_temp.table_name`
 
 **Rules:**
 1. **Always use backticks** for real table names: `\`project.dataset.table\``
-2. Apply the table mapping to replace Hive table names
+2. Apply the table mapping to replace Spark table names
 3. For unmapped real tables, use pattern: `\`project.dataset.db_tablename\``
 4. **Never output table names without backticks** - even in CREATE, INSERT, JOIN, FROM, etc.
 
-### 14. Hive Variable Conversion to BigQuery Scripting - CRITICAL
+### 14. Spark Variable Conversion to BigQuery Scripting - CRITICAL
 
 #### 14.1 SET hivevar Statements
-Convert Hive variable definitions to BigQuery DECLARE/SET:
+Convert Spark variable definitions to BigQuery DECLARE/SET:
 ```sql
--- Hive:
+-- Spark:
 set hivevar:start_date=${{zdt.addDay(-7).format("yyyy-MM-dd")}};
 set hivevar:end_date=${{zdt.format("yyyy-MM-dd")}};
 set hivevar:table_suffix=${{zdt.addDay(-1).format("yyyyMMdd")}};
@@ -1060,7 +1068,7 @@ DECLARE month_start DATE DEFAULT DATE_TRUNC(CURRENT_DATE(), MONTH);  -- first da
 ```
 
 #### 14.2 Scheduling Parameter Mappings
-| Hive Scheduling Param | BigQuery Equivalent |
+| Spark Scheduling Param | BigQuery Equivalent |
 |----------------------|---------------------|
 | `${{zdt.format("yyyy-MM-dd")}}` | `CURRENT_DATE()` |
 | `${{zdt.format("yyyyMMdd")}}` | `FORMAT_DATE('%Y%m%d', CURRENT_DATE())` |
@@ -1073,12 +1081,12 @@ DECLARE month_start DATE DEFAULT DATE_TRUNC(CURRENT_DATE(), MONTH);  -- first da
 | `${{zdt.format("yyyy-MM")}}-01` (month start) | `DATE_TRUNC(CURRENT_DATE(), MONTH)` |
 | `${{...}}_suffix` (with suffix) | `CONCAT(FORMAT_DATE(...), '_suffix')` |
 | String concatenation `a + b` | `CONCAT(a, b)` or `a \|\| b` |
-| Hive `add_months(date, N)` | `DATE_ADD(date, INTERVAL N MONTH)` |
+| Spark `add_months(date, N)` | `DATE_ADD(date, INTERVAL N MONTH)` |
 
 #### 14.3 Using Variables in WHERE Clauses
 When `${{var}}` is used for filtering values, replace with variable name directly (no quotes):
 ```sql
--- Hive:
+-- Spark:
 WHERE dt = '${{hivevar:start_date}}'
 WHERE d = '${{zdt.format("yyyy-MM-dd")}}'
 
@@ -1096,7 +1104,7 @@ When `${{var}}` constructs table names dynamically:
 
 **Option A: Wildcard Tables (SELECT only, NOT for DDL!)**
 ```sql
--- Hive:
+-- Spark:
 SELECT * FROM db.table_${{zdt.format("yyyyMMdd")}}
 
 -- BigQuery (OK for SELECT):
@@ -1115,7 +1123,7 @@ EXECUTE IMMEDIATE query USING DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) AS dt;
 
 #### 14.5 Complete Conversion Example
 ```sql
--- Hive:
+-- Spark:
 set hivevar:dt=${{zdt.addDay(-1).format("yyyy-MM-dd")}};
 set hivevar:suffix=${{zdt.addDay(-1).format("yyyyMMdd")}};
 SELECT * FROM db.events_${{hivevar:suffix}} WHERE dt = '${{hivevar:dt}}';
@@ -1131,7 +1139,7 @@ WHERE _TABLE_SUFFIX = suffix AND dt = dt;
 #### 14.6 DDL with Dynamic Table Names (MUST use EXECUTE IMMEDIATE)
 **Note: DDL statements (CREATE TABLE, INSERT INTO) do NOT support wildcard `*`!**
 ```sql
--- Hive:
+-- Spark:
 set hivevar:date_app=${{zdt.addDay(-1).format("yyyyMMdd")}}_test;
 INSERT OVERWRITE TABLE db.result_${{hivevar:date_app}}
 SELECT * FROM db.source WHERE dt = '${{hivevar:date_app}}';
@@ -1153,10 +1161,10 @@ EXECUTE IMMEDIATE query USING date_app AS date_app;
 ```
 
 ### 15. Template Variables Handling - CRITICAL
-Hive variables like `${{zdt...}}` are runtime string placeholders from the scheduling system.
+Spark variables like `${{zdt...}}` are runtime string placeholders from the scheduling system.
 
 **Rules for Variable Handling:**
-1. Treat Hive variables as **String literals**
+1. Treat Spark variables as **String literals**
 2. When comparing to a DATE column (like partition column `d`), wrap the variable in `DATE()`
 3. Keep the variable syntax exactly as-is inside the `DATE()` function
 
@@ -1186,13 +1194,13 @@ WHERE STR_TO_DATE(d, '%Y-%m-%d') = ...
 #### 16.1 Custom UDF Mapping
 Some common custom UDFs can be mapped to BigQuery native functions:
 
-| Hive UDF | BigQuery Native Function |
+| Spark UDF | BigQuery Native Function |
 |----------|-------------------------|
 | `udf.json_split(col)` | `JSON_EXTRACT_ARRAY(col)` |
 
 Example:
 ```sql
--- Hive:
+-- Spark:
 SELECT udf.json_split(json_col) AS items FROM table
 
 -- BigQuery:
@@ -1239,7 +1247,7 @@ Be permissive on: table existence, column names, custom UDFs.
 
 FIX_BIGQUERY_PROMPT = """You are an expert BigQuery SQL debugger. Fix the BigQuery SQL based on the error.
 
-## Original Hive SQL:
+## Original Spark SQL:
 ```sql
 {spark_sql}
 ```
@@ -1389,7 +1397,7 @@ If error says `Table "xxx" must be qualified with a dataset`:
 
 **Step 2: If `xxx` is a real table (SHOULD have prefix)**
 - Add dataset prefix: `\`project.dataset.xxx\``
-- If has Hive db prefix like `db.xxx`, convert to: `\`project.dataset.db_xxx\``
+- If has Spark db prefix like `db.xxx`, convert to: `\`project.dataset.db_xxx\``
 - Check if it needs to be added to the table mapping
 
 **Common patterns:**
