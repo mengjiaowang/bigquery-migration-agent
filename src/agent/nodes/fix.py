@@ -25,7 +25,7 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     retry_count = state["retry_count"] + 1
     
     logger.info("=" * 60)
-    logger.info(f"[Node: fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "fix", "status": "loading"})
+    logger.info(f"[Node: fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "fix", "status": "loading", "attempt": retry_count})
     logger.info(f"[Node: fix] Previous error: {state['validation_error']}")
     logger.info(f"[Node: fix] SQL to fix:\n{state['bigquery_sql']}")
     
