@@ -24,9 +24,18 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     """
     retry_count = state["retry_count"] + 1
     
+    # Determine which error to fix
+    # If validation passed but we are here, it must be an execution error
+    if state.get("validation_success") and state.get("execution_error"):
+        error_message = state["execution_error"]
+        error_type = "execution"
+    else:
+        error_message = state.get("validation_error")
+        error_type = "validation"
+    
     logger.info("=" * 60)
     logger.info(f"[Node: fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "fix", "status": "loading", "attempt": retry_count})
-    logger.info(f"[Node: fix] Previous error: {state['validation_error']}")
+    logger.info(f"[Node: fix] Previous error ({error_type}): {error_message}")
     logger.info(f"[Node: fix] SQL to fix:\n{state['bigquery_sql']}")
     
     llm = get_llm()
@@ -49,7 +58,7 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     prompt = FIX_BIGQUERY_PROMPT.format(
         spark_sql=state["spark_sql"],
         bigquery_sql=state["bigquery_sql"],
-        error_message=state["validation_error"],
+        error_message=error_message,
         conversion_history=history_str,
     )
     

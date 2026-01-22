@@ -1,6 +1,6 @@
 """LangGraph workflow definition for Hive to BigQuery SQL conversion."""
 
-from typing import Literal
+from typing import Literal, Optional
 
 from langgraph.graph import END, StateGraph
 
@@ -15,12 +15,14 @@ from src.agent.nodes import (
 from src.agent.state import AgentState
 
 
+import os
+
 def should_continue_after_spark_validation(state: AgentState) -> Literal["convert", "end"]:
     """Determine if we should continue after Spark validation.
     
     Args:
         state: Current agent state.
-        
+    
     Returns:
         "convert" if Hive SQL is valid, "end" otherwise.
     """
@@ -40,6 +42,26 @@ def should_retry_after_validation(state: AgentState) -> Literal["execute", "fix"
     """
     if state["validation_success"]:
         return "execute"
+    
+    # Check if we have retries left
+    max_retries = state.get("max_retries", 3)
+    if state["retry_count"] < max_retries:
+        return "fix"
+    
+    return "end"
+
+
+def should_retry_after_execution(state: AgentState) -> Literal["data_verification", "fix", "end"]:
+    """Determine if we should verify data or retry after BigQuery execution.
+    
+    Args:
+        state: Current agent state.
+        
+    Returns:
+        "data_verification" if execution passed, "fix" if failed and retries available, "end" otherwise.
+    """
+    if state["execution_success"]:
+        return "data_verification"
     
     # Check if we have retries left
     max_retries = state.get("max_retries", 3)
@@ -93,8 +115,16 @@ def create_sql_converter_graph() -> StateGraph:
         }
     )
     
-    # Add edge from execute to data_verification
-    workflow.add_edge("execute", "data_verification")
+    # Add conditional edge after execution
+    workflow.add_conditional_edges(
+        "execute",
+        should_retry_after_execution,
+        {
+            "data_verification": "data_verification",
+            "fix": "fix",
+            "end": END,
+        }
+    )
     
     # Add edge from data_verification to END
     workflow.add_edge("data_verification", END)
@@ -106,16 +136,20 @@ def create_sql_converter_graph() -> StateGraph:
     return workflow.compile()
 
 
-def run_conversion(spark_sql: str, max_retries: int = 3) -> AgentState:
+def run_conversion(spark_sql: str, max_retries: Optional[int] = None) -> AgentState:
     """Run the SQL conversion workflow.
     
     Args:
         spark_sql: The Spark SQL to convert.
         max_retries: Maximum number of retry attempts for fixing BigQuery SQL.
+                    If None, reads from MAX_RETRIES env var (default 10).
         
     Returns:
         Final agent state with conversion results.
     """
+    if max_retries is None:
+        max_retries = int(os.getenv("MAX_RETRIES", "10"))
+
     graph = create_sql_converter_graph()
     
     initial_state: AgentState = {

@@ -55,13 +55,18 @@ class BigQueryService:
                 "Project ID is required. Set GOOGLE_CLOUD_PROJECT environment variable, "
                 "pass project_id parameter, or configure default project in gcloud."
             )
+
         self._client: Optional[bigquery.Client] = None
     
     @property
     def client(self) -> bigquery.Client:
         """Lazy initialization of BigQuery client."""
         if self._client is None:
-            self._client = bigquery.Client(project=self.project_id)
+            # Explicitly set quota_project_id to project_id to ensure they match
+            from google.api_core.client_options import ClientOptions
+            client_options = ClientOptions(quota_project_id=self.project_id)
+
+            self._client = bigquery.Client(project=self.project_id, client_options=client_options)
         return self._client
     
     def dry_run(self, sql: str) -> DryRunResult:
@@ -164,6 +169,58 @@ class BigQueryService:
                 success=False,
                 error_message=str(e)
             )
+
+    def get_table_ddl(self, table_name: str) -> Optional[str]:
+        """Get the DDL for a BigQuery table.
+        
+        Args:
+            table_name: Full table name (project.dataset.table or dataset.table).
+            
+        Returns:
+            The DDL string if found, None otherwise.
+        """
+        try:
+            # Parse table name
+            parts = table_name.split('.')
+            if len(parts) == 3:
+                project, dataset, table = parts
+            elif len(parts) == 2:
+                # If project not specified, use default project
+                project = self.project_id
+                dataset, table = parts
+            else:
+                return None
+                
+            # Remove backticks if present
+            project = project.strip('`')
+            dataset = dataset.strip('`')
+            table = table.strip('`')
+            
+            sql = f"SELECT ddl FROM `{project}.{dataset}.INFORMATION_SCHEMA.TABLES` WHERE LOWER(table_name) = LOWER('{table}')"
+            
+            # logger.info(f"Executing DDL fetch query: {sql}")
+            result = self.execute_query(sql)
+            
+            if not result.success:
+                # Log the error details
+                print(f"Error fetching DDL for {table_name}: {result.error_message}")
+                return None
+                
+            if result.result and isinstance(result.result, list) and len(result.result) > 0:
+                ddl = result.result[0].get('ddl')
+                if ddl:
+                    return ddl
+                else:
+                    print(f"DDL column is empty for {table_name}")
+                    return None
+            
+            print(f"No DDL found for {table_name} (Query returned 0 rows)")
+            return None
+            
+        except Exception as e:
+            # Log error but don't fail, just return None
+            print(f"Exception fetching DDL for {table_name}: {e}")
+            return None
     
     def close(self):
         """Close the BigQuery client connection."""

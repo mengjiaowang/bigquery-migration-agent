@@ -44,6 +44,9 @@ SPARK_TO_BIGQUERY_PROMPT = """You are an expert SQL translator. Convert Hive SQL
 
 {table_mapping_info}
 
+## Target Table DDLs:
+{table_ddls}
+
 ---
 
 ## Conversion Rules:
@@ -716,11 +719,20 @@ insert overwrite table dw_htlbizdb.target partition (d = '${{zdt.format("yyyy-MM
 select col1, col2, ... from source;
 
 -- BigQuery (remove USE, convert INSERT):
-DECLARE partition_d DATE DEFAULT CURRENT_DATE();
 
-CREATE OR REPLACE TABLE `project.dataset.target` AS
-SELECT col1, col2, ..., partition_d AS d
-FROM `project.dataset.source`;
+BEGIN TRANSACTION;
+
+-- 1. 删除目标分区的数据
+DELETE FROM `your_project.dataset.target_table`
+WHERE date_column = '2023-10-01'; -- 指定要覆盖的分区条件
+
+-- 2. 插入新数据到该分区
+INSERT INTO `your_project.dataset.target_table` (col1, col2, date_column)
+SELECT col1, col2, date_column
+FROM `your_project.dataset.source_table`
+WHERE date_column = '2023-10-01';
+
+COMMIT TRANSACTION;
 ```
 
 #### Pattern 2: UDF to_json with Large Map
