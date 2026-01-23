@@ -17,6 +17,8 @@ class AgentState(TypedDict):
     
     # Conversion results
     bigquery_sql: Optional[str]
+    source_tables: list[str]
+    table_mapping: dict[str, str]
     
     # BigQuery validation results (supports both dry_run and llm modes)
     validation_success: bool
