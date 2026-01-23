@@ -149,7 +149,7 @@ def convert_node(state: AgentState) -> dict[str, Any]:
     # (in case the LLM didn't apply all mappings correctly)
     bigquery_sql = table_mapping_service.replace_table_names(bigquery_sql)
     
-    logger.info(f"[Node: convert] Final BigQuery SQL ({len(bigquery_sql)} chars):\n{bigquery_sql}", extra={"type": "status", "step": "convert", "status": "success"})
+    logger.debug(f"[Node: convert] Final BigQuery SQL ({len(bigquery_sql)} chars):\n{bigquery_sql}", extra={"type": "status", "step": "convert", "status": "success"})
     
     return {
         "bigquery_sql": bigquery_sql,

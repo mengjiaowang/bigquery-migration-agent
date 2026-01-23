@@ -23,7 +23,19 @@ def validate_spark_node(state: AgentState) -> dict[str, Any]:
     logger.info("=" * 60)
     logger.info("[Node: validate_spark] Starting Spark SQL validation", extra={"type": "status", "step": "spark", "status": "loading"})
     
-    spark_sql = state["spark_sql"]
+    spark_sql = state["spark_sql"].strip()
+    
+    # Clean up markdown code blocks if present
+    if spark_sql.startswith("```"):
+        lines = spark_sql.split("\n")
+        # Remove first line (```sql or ```)
+        # Check if last line is ```
+        if lines[-1].strip() == "```":
+            spark_sql = "\n".join(lines[1:-1]).strip()
+        else:
+            # Handle case where only start block is present (unlikely but possible)
+            spark_sql = "\n".join(lines[1:]).strip()
+            
     mapping_service = get_table_mapping_service()
     
     source_tables = set()
