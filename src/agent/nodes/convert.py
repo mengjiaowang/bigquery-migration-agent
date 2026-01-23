@@ -146,6 +146,7 @@ def convert_node(state: AgentState) -> dict[str, Any]:
     
     return {
         "bigquery_sql": bigquery_sql,
+        "table_ddls": table_ddls,
         "retry_count": 0,
         "conversion_history": [],
     }

@@ -28,7 +28,7 @@ def validate_node(state: AgentState) -> dict[str, Any]:
     
     logger.info("=" * 60)
     logger.info(f"[Node: validate] Starting BigQuery SQL validation (attempt {attempt})", extra={"type": "status", "step": "bq_dry_run", "status": "loading", "attempt": attempt})
-    logger.info(f"BigQuery SQL to validate:\n{state['bigquery_sql']}")
+    logger.debug(f"BigQuery SQL to validate:\n{state['bigquery_sql']}")
     
     result = validate_bigquery_sql(state["bigquery_sql"])
     

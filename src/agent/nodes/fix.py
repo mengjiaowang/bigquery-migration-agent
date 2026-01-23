@@ -36,7 +36,7 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     logger.info("=" * 60)
     logger.info(f"[Node: fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "fix", "status": "loading", "attempt": retry_count})
     logger.info(f"[Node: fix] Previous error ({error_type}): {error_message}")
-    logger.info(f"[Node: fix] SQL to fix:\n{state['bigquery_sql']}")
+    logger.debug(f"[Node: fix] SQL to fix:\n{state['bigquery_sql']}")
     
     llm = get_llm()
     
@@ -59,6 +59,7 @@ def fix_node(state: AgentState) -> dict[str, Any]:
         spark_sql=state["spark_sql"],
         bigquery_sql=state["bigquery_sql"],
         error_message=error_message,
+        table_ddls=state.get("table_ddls", "No DDLs available."),
         conversion_history=history_str,
     )
     
@@ -74,7 +75,7 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     # (in case the LLM didn't apply all mappings correctly)
     fixed_sql = table_mapping_service.replace_table_names(fixed_sql)
     
-    logger.info(f"[Node: fix] Fixed BigQuery SQL:\n{fixed_sql}")
+    logger.debug(f"[Node: fix] Fixed BigQuery SQL:\n{fixed_sql}")
     
     return {
         "bigquery_sql": fixed_sql,

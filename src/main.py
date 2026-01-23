@@ -181,7 +181,7 @@ async def convert_sql(request: ConvertRequest):
     """
     logger.info("=" * 60)
     logger.info("[API] Received conversion request")
-    logger.info(f"[API] Input Spark SQL:\n{request.spark_sql}")
+    logger.debug(f"[API] Input Spark SQL:\n{request.spark_sql}")
     
     try:
         # Run the conversion workflow in a separate thread to avoid blocking the event loop

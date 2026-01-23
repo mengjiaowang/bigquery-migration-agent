@@ -72,7 +72,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                         (SELECT * FROM `{ground_truth_table}` EXCEPT DISTINCT SELECT * FROM `{target_table}`)
                     )
                 """
-                logger.info(f"[Node: verify] Running full content check: {check_sql}")
+                logger.debug(f"[Node: verify] Running full content check: {check_sql}")
                 result = bq_service.execute_query(check_sql)
                 
                 if result.success and isinstance(result.result, list) and len(result.result) > 0:
@@ -107,7 +107,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                         (SELECT count(*) FROM `{target_table}`) as target_cnt,
                         (SELECT count(*) FROM `{ground_truth_table}`) as gt_cnt
                 """
-                logger.info(f"[Node: verify] Running row count comparison: {check_sql}")
+                logger.debug(f"[Node: verify] Running row count comparison: {check_sql}")
                 result = bq_service.execute_query(check_sql)
                 
                 if result.success and isinstance(result.result, list) and len(result.result) > 0:
@@ -141,7 +141,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
             # Fallback to simple existence check if no mapping found
             logger.info("[Node: verify] No ground truth mapping found. Running simple existence check.")
             check_sql = f"SELECT count(*) as cnt FROM `{target_table}`"
-            logger.info(f"[Node: verify] Running check: {check_sql}")
+            logger.debug(f"[Node: verify] Running check: {check_sql}")
             
             result = bq_service.execute_query(check_sql)
             

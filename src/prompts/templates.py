@@ -1,48 +1,5 @@
 """Prompt templates for Spark to BigQuery SQL conversion."""
 
-SPARK_VALIDATION_PROMPT = """You are a Spark SQL syntax expert. Validate if the following SQL is valid SQL syntax.
-
-```sql
-{spark_sql}
-```
-
-Respond in JSON format only:
-{{
-    "is_valid": true/false,
-    "error": "error message if invalid, null if valid"
-}}
-
-Hive SQL features to consider:
-- Data types: STRING, INT, BIGINT, FLOAT, DOUBLE, BOOLEAN, TIMESTAMP, DATE, ARRAY, MAP, STRUCT
-- Functions: date_format, datediff, date_add, date_sub, from_unixtime, unix_timestamp, nvl, concat_ws, collect_list, collect_set, get_json_object
-- Syntax: LATERAL VIEW, EXPLODE, POSEXPLODE, DISTRIBUTE BY, CLUSTER BY, SORT BY, GROUPING SETS
-- DDL: CREATE TABLE, ALTER VIEW, PARTITIONED BY, STORED AS, ROW FORMAT, SERDE, TBLPROPERTIES
-- DML: INSERT OVERWRITE TABLE, INSERT INTO
-
-**IMPORTANT - Scheduling System Parameters:**
-The SQL may contain scheduling system macros/variables. These are VALID and should NOT be treated as errors:
-- `set hivevar:var_name=${{...}};` - Variable definition statements
-- `${{zdt.format("yyyy-MM-dd")}}` - Date formatting macro
-- `${{zdt.addDay(-1).format("yyyyMMdd")}}` - Date calculation macro
-- `${{zdt.add(10,-1).format("HH")}}` - Time calculation macro
-- `${{zdt.addMonth(-1).format("yyyy-MM")}}` - Month calculation macro
-- `${{hivevar:var_name}}` - Variable reference
-- `${{var_name}}` - Simple variable reference
-- String concatenation in variable values like `${{...}}_suffix`
-
-These macros are runtime placeholders from the scheduling system. Treat them as valid string literals.
-
-Be strict on syntax, permissive on semantics (don't check if tables exist).
-
-Please note that spark allows using `having` clause after `select` clause
-```
-select *
-       ,row_number() over(...) as rk
-from ...
-having rk = 1
-```
-"""
-
 SPARK_TO_BIGQUERY_PROMPT = """
 You are an expert SQL translator. Convert Spark SQL to functionally equivalent, **executable** BigQuery SQL.
 
@@ -151,6 +108,25 @@ Convert Spark scheduling macros (`${{...}}`) directly into native BigQuery funct
 * **Regex:** Use raw strings `r'...'` (e.g., `REGEXP_REPLACE(col, r'\d', 'X')`).
 
 
+### 6. Handling Type Mismatch (STRING vs INT64)
+
+* **BigQuery is strongly typed and does not support implicit conversion between STRING and INT64 (e.g., `Operator = for argument types: STRING, INT64` error). 
+* **You must use the table DDL to check the data type of the column and apply the following rules:
+
+(1) Numeric Literals:
+If a STRING column is compared to a numeric literal, wrap the literal in quotes.
+- Example: `WHERE country_flag = 1` → `WHERE country_flag = '1'` (if country_flag is STRING).
+
+(2) JOIN Keys & Column Comparisons:
+If comparing a STRING column with an INT64 column, explicitly cast the types to match.
+- Priority: Use `SAFE_CAST(string_column AS INT64)` to convert the string side.
+- Reason: `SAFE_CAST` returns NULL instead of failing if the string contains non-numeric characters.
+- Example: `ON t.id = m.id` (if t.id is STRING) → `ON SAFE_CAST(t.id AS INT64) = m.id`.
+
+(3) Inequality Logic (>, <):
+If a STRING column is involved in a numerical range check (e.g., `country > 1`), you must cast it to ensure numerical comparison rather than dictionary (lexicographical) order.
+- Example: `WHERE country > 1` → `WHERE SAFE_CAST(country AS INT64) > 1`.
+
 ## Output Requirements:
 
 1. Return **ONLY** the converted BigQuery SQL code.
@@ -172,217 +148,94 @@ Convert Spark scheduling macros (`${{...}}`) directly into native BigQuery funct
 ```
 """
 
-BIGQUERY_VALIDATION_PROMPT = """You are a BigQuery SQL syntax expert. Validate if the following SQL is valid BigQuery syntax.
 
-```sql
-{bigquery_sql}
-```
+FIX_BIGQUERY_PROMPT = """
+You are a BigQuery SQL Expert and Debugger. Your goal is to fix the provided "Current BigQuery SQL" based on the specific "BigQuery Error" and "Original Spark SQL" logic.
 
-Respond in JSON format only:
-{{
-    "is_valid": true/false,
-    "error": "detailed error message if invalid, null if valid"
-}}
-
-Check for:
-1. Valid function names and argument counts
-2. Correct data types (INT64, FLOAT64, BOOL, STRING, etc.)
-3. Proper UNNEST / CROSS JOIN syntax
-4. Valid table references with backticks
-5. Correct GROUP BY with aggregates
-6. Valid window function syntax
-7. Proper GROUPING SETS / ROLLUP / CUBE syntax
-
-Be permissive on: table existence, column names, custom UDFs.
-"""
-
-FIX_BIGQUERY_PROMPT = """You are an expert BigQuery SQL debugger. Fix the BigQuery SQL based on the error.
-
-## Original Spark SQL:
+## Context Data
+### 1. Original Spark SQL (Reference Logic):
 ```sql
 {spark_sql}
+
 ```
 
-## Current BigQuery SQL (has error):
+### 2. Current BigQuery SQL (Has Error):
+
 ```sql
 {bigquery_sql}
+
 ```
 
-## BigQuery Error:
+### 3. BigQuery Error Message:
+
 ```
 {error_message}
+
 ```
+
+### 4. Target Table DDLs:
+
+{table_ddls}
 
 ---
 
-## Common Fixes:
+## Debugging & Fixing Guidelines
 
-### Data Type Errors
-- Use INT64 instead of INT/INTEGER
-- Use FLOAT64 instead of FLOAT/DOUBLE  
-- Use BOOL instead of BOOLEAN
-- Add CAST() for type conversions: `CAST(col AS INT64)`
-- **String-to-Number comparison error (ID columns)**: 
-  - Common ID columns (masterhotelid, cityid, country_flag, etc.) are STRING in source tables
-  - Use `SAFE_CAST(column_name AS INT64)` when comparing to numbers
-  - Example: `AND masterhotelid > 0` → `AND SAFE_CAST(masterhotelid AS INT64) > 0`
+Apply the following rules to resolve errors. Prioritize the specific error message provided.
 
-### Date Column Errors (PARSE_DATE errors)
-- **NEVER apply PARSE_DATE to partition column `d`** - it's already DATE type
-- Cast the comparison VALUE to DATE, not the column
-- Wrong: `WHERE PARSE_DATE('%Y-%m-%d', d) = ...`
-- Correct: `WHERE d = DATE('2024-01-01')` or `WHERE d = DATE('${{zdt...}}')`
+### A. Syntax & Structure Fixes
 
-### Function Errors
-- date_format → FORMAT_DATE or FORMAT_TIMESTAMP
-- datediff → DATE_DIFF(end, start, DAY)
-- nvl → IFNULL or COALESCE
-- collect_list → ARRAY_AGG
-- size(arr) → ARRAY_LENGTH(arr)
-- instr/locate → STRPOS
+1. **Backticks:** Wrap ALL table names in backticks (e.g., `project-id.dataset.table`), especially if they contain hyphens.
+2. **Unnest Syntax:**
+* Replace `LATERAL VIEW explode(col)` with `CROSS JOIN UNNEST(col) AS alias`.
+* **Crucial:** Place the alias *after* the closing parenthesis of UNNEST.
+* *Correct:* `CROSS JOIN UNNEST(my_array) AS item`
+* *Wrong:* `CROSS JOIN UNNEST(my_array item)`
 
-### COALESCE Type Mismatch Errors
-If error says `No matching signature for function COALESCE - Argument types: INT64, STRING`:
-- For numeric columns (star, score, cnt, price, etc.): `COALESCE(col, 0)` instead of `COALESCE(col, '')`
-- For ID columns that need string: `COALESCE(CAST(col AS STRING), '')`
 
-### LATERAL VIEW / EXPLODE Errors
-```sql
--- Wrong:
-LATERAL VIEW explode(arr) t AS item
+3. **Grouping Sets:** Ensure no columns are listed between `GROUP BY` and `GROUPING SETS`.
+* *Correct:* `GROUP BY GROUPING SETS ((a, b), (a))`
 
--- Correct:
-CROSS JOIN UNNEST(arr) AS item
-```
 
-### UNNEST Alias Position Errors
-If error says `Expected ")" or "," but got identifier`:
-- **Cause**: Alias is placed inside UNNEST parenthesis instead of after
-- **Fix**: Move alias to AFTER the closing parenthesis
-```sql
--- ❌ Wrong:
-CROSS JOIN UNNEST([...] jt)
+4. **Multi-statement:** Ensure statements are separated by semicolons `;`.
+5. **Window Functions:** If `HAVING` filters a window function result, wrap the query in a subquery and use `WHERE`.
 
--- ✓ Correct:
-CROSS JOIN UNNEST([...]) AS jt
-```
+### B. Data Type & Function Mapping
 
-### json_tuple Conversion Errors
-If UNNEST with STRUCT causes errors when converting `LATERAL VIEW json_tuple`:
-- **Fix**: Remove UNNEST, use direct JSON_EXTRACT_SCALAR in SELECT instead
-```sql
--- Instead of UNNEST with STRUCT, just extract directly:
-JSON_EXTRACT_SCALAR(json_col, '$.field_name') AS field_name
-```
+1. **Strict Types:** Use `INT64` (not INT), `FLOAT64` (not DOUBLE), `BOOL` (not BOOLEAN).
+2. **ID Columns (String vs Int):** If comparing a String ID (e.g., `hotelid`, `cityid`) to a number, use `SAFE_CAST(col AS INT64)`.
+3. **Coalesce/IfNull:** Ensure arguments have matching types.
+* Numeric: `COALESCE(num_col, 0)`
+* String: `COALESCE(str_col, '')` or `COALESCE(CAST(id_col AS STRING), '')`
 
-### JSON_EXTRACT_SCALAR Type Mismatch Errors
-If error says `No matching signature for function JSON_EXTRACT_SCALAR` with `ARRAY<STRUCT<key, value>>`:
-- **Cause**: Column is `ARRAY<STRUCT<key STRING, value STRING>>` type (not JSON string)
-- **Fix**: Use UNNEST subquery instead of JSON_EXTRACT_SCALAR
-```sql
--- ❌ Wrong (ARRAY<STRUCT> is not JSON):
-JSON_EXTRACT_SCALAR(map_col, '$.key')
 
--- ✓ Correct:
-(SELECT value FROM UNNEST(map_col) WHERE key = 'target_key')
-```
+4. **Arrays:**
+* `collect_list` → `ARRAY_AGG`
+* `size(arr)` → `ARRAY_LENGTH(arr)`
+* `concat_ws` → `ARRAY_TO_STRING([a, b], separator)`. Ensure elements are CAST to STRING first.
 
-### GROUP BY GROUPING SETS Error
-If error says `Expected ")" but got keyword GROUPING`:
-- **Cause**: Columns listed before `GROUPING SETS` (e.g. `GROUP BY a, b GROUPING SETS...`)
-- **Fix**: Remove the columns between `GROUP BY` and `GROUPING SETS`.
-  - Wrong: `GROUP BY a, b GROUPING SETS ((a, b))`
-  - Correct: `GROUP BY GROUPING SETS ((a, b))`
 
-### ARRAY_TO_STRING Signature Error
-If error says `No matching signature for function ARRAY_TO_STRING` or `Argument types: ARRAY<INT64>, STRING`:
-- **Cause**: Trying to `ARRAY_TO_STRING` on non-STRING types (INT, FLOAT, etc.)
-- **Fix**: Cast elements to STRING inside the array.
-  - Wrong: `ARRAY_TO_STRING([year, month], '-')`
-  - Correct: `ARRAY_TO_STRING([CAST(year AS STRING), CAST(month AS STRING)], '-')`
+5. **JSON vs Structs:**
+* If column is `ARRAY<STRUCT>`, use `UNNEST`. Do NOT use `JSON_EXTRACT` functions.
+* If column is JSON String, use `JSON_EXTRACT_SCALAR`.
 
-### Multiple Statements Error
-If error says `Expected end of input but got keyword CREATE`:
-- **Cause**: SQL contains multiple statements but dry_run validates single statement
-- **Fix**: Ensure statements are properly separated with semicolons, or split into separate queries
 
-### String Concatenation
-```sql
--- Wrong: 
-concat_ws("_", a, b, c)
+### C. Date & Partition Handling
 
--- Correct:
-ARRAY_TO_STRING([a, b, c], "_")
-```
+1. **Partition Columns:** NEVER use `PARSE_DATE` on a partition column that is already a DATE. Instead, cast the *value* you are comparing against.
+* *Correct:* `d = DATE('2024-01-01')`
 
-### Reserved Keywords
-- Use backticks for reserved words: `select`, `from`, `table`, `group`, `order`, `language`, etc.
 
-### Syntax Error: Unexpected Identifier (Missing Backticks)
-If error says `Syntax error: Unexpected identifier` with a table name containing hyphens:
-- **Cause**: Table name with hyphen (like `project-id.dataset.table`) is not wrapped in backticks
-- **Fix**: Wrap ALL table names in backticks: `\`project-id.dataset.table\``
-- Hyphens in project IDs are interpreted as minus operators without backticks
-
-### Partition Spec Mismatch Errors
-If error says `Cannot replace a table with a different partitioning spec`:
-- **Cause**: Using `CREATE OR REPLACE TABLE` on a partitioned table without `PARTITION BY`
-- **Fix**: Add `PARTITION BY column_name` to match existing table's partition spec
-```sql
--- Add PARTITION BY:
-CREATE OR REPLACE TABLE `project.dataset.table`
-PARTITION BY d  -- ← Add this line
-AS SELECT ...
-```
-
-### Table Not Qualified Errors
-If error says `Table "xxx" must be qualified with a dataset`:
-
-**Step 1: Check if `xxx` is a virtual table (should NOT have prefix)**
-- Is it defined in a `WITH xxx AS (...)` clause? → CTE is missing, add the WITH clause
-- Is it a subquery alias `(SELECT ...) AS xxx`? → Subquery definition is missing
-- Is it an UNNEST alias? → Check UNNEST syntax
-
-**Step 2: If `xxx` is a real table (SHOULD have prefix)**
-- Add dataset prefix: `\`project.dataset.xxx\``
-- If has Spark db prefix like `db.xxx`, convert to: `\`project.dataset.db_xxx\``
-- Check if it needs to be added to the table mapping
-
-**Common patterns:**
-- `exploded_data`, `derived_data`, `tmp_xxx` → likely CTEs, check if WITH clause exists
-- `v_dim_xxx`, `dim_xxx_df` → likely real views, need prefix
-- `ods_xxx`, `dw_xxx`, `dwhtl.xxx` → real tables, need prefix
-
-### Variable & Scheduling Parameter Errors (NATIVE CONVERSION)
-**Target: Convert ALL macros to native BigQuery functions.**
-
-* **Error:** `Could not cast literal '${{zdt...}}'` or `Invalid date literal`
-* **Fix:** The macro was not converted to a function.
-  1. Remove the quotes `'...'`
-  2. Replace `${{zdt...}}` with `CURRENT_DATE()`, `DATE_SUB(...)`, or `FORMAT_DATE(...)`
-  3. Ensure types match (Comparison to DATE column uses DATE function; Comparison to STRING uses FORMAT_DATE).
-
-* **Error:** `Undeclared variable`
-* **Fix:** If using `start_date` or similar, ensure a `DECLARE start_date ...` statement is added at the top of the script.
-
-### GROUP BY with Non-Aggregated Columns
-- Ensure all non-aggregated SELECT columns are in GROUP BY
-- For GROUPING SETS, include all columns used in any grouping set
-
-### HAVING Clause with Window Functions Error
-If HAVING is used to filter on window function results (like `HAVING rk = 1`):
-- **Cause**: BigQuery HAVING can only filter aggregates, not window function results
-- **Fix**: Wrap in subquery and use WHERE
-```sql
--- ❌ Wrong:
-SELECT *, ROW_NUMBER() OVER(...) AS rk FROM t HAVING rk = 1
-
--- ✓ Correct:
-SELECT * FROM (SELECT *, ROW_NUMBER() OVER(...) AS rk FROM t) WHERE rk = 1
-```
+2. **Spark Macros:** Convert `${{zdt...}}` macros to native BigQuery functions:
+* `'${{zdt.add(0).format("yyyy-MM-dd")}}'` → `CURRENT_DATE()`
+* `'${{zdt.add(-1).format("yyyy-MM-dd")}}'` → `DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)`
+* Remove quotes around the resulting function calls.
 
 ---
 
-## Output:
-Return ONLY the corrected BigQuery SQL. No explanations, no markdown.
+## Output Requirement
+
+* Return **ONLY** the corrected BigQuery SQL code block.
+* Do NOT include markdown like "Here is the fixed code" or explanations.
+* Do NOT output JSON.
 """
