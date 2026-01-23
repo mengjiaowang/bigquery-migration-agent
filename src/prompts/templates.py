@@ -149,6 +149,30 @@ If a STRING column is involved in a numerical range check (e.g., `country > 1`),
 """
 
 
+BIGQUERY_VALIDATION_PROMPT = """You are a BigQuery SQL syntax expert. Validate if the following SQL is valid BigQuery syntax.
+
+```sql
+{bigquery_sql}
+```
+
+Respond in JSON format only:
+{{
+    "is_valid": true/false,
+    "error": "detailed error message if invalid, null if valid"
+}}
+
+Check for:
+1. Valid function names and argument counts
+2. Correct data types (INT64, FLOAT64, BOOL, STRING, etc.)
+3. Proper UNNEST / CROSS JOIN syntax
+4. Valid table references with backticks
+5. Correct GROUP BY with aggregates
+6. Valid window function syntax
+7. Proper GROUPING SETS / ROLLUP / CUBE syntax
+
+Be permissive on: table existence, column names, custom UDFs.
+"""
+
 FIX_BIGQUERY_PROMPT = """
 You are a BigQuery SQL Expert and Debugger. Your goal is to fix the provided "Current BigQuery SQL" based on the specific "BigQuery Error" and "Original Spark SQL" logic.
 
