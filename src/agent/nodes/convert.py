@@ -73,26 +73,19 @@ def convert_node(state: AgentState) -> dict[str, Any]:
     
     # Get table mapping information
     table_mapping_service = get_table_mapping_service()
-    table_mapping_info = table_mapping_service.get_mapping_info_for_prompt()
-    all_mappings = table_mapping_service.get_all_mappings()
+    # Use mappings identified by validate_spark
+    table_mapping = state.get("table_mapping", {})
+    table_mapping_info = table_mapping_service.get_mapping_info_for_prompt(table_mapping)
     
-    logger.info(f"[Node: convert] Using {len(all_mappings)} table mappings")
+    logger.info(f"[Node: convert] Using {len(table_mapping)} table mappings from state")
     
     # Fetch DDLs for relevant tables
     bq_service = BigQueryService()
     table_ddls_list = []
     
-    # Optimization: Only fetch DDLs for tables that appear in the SQL
-    # Case insensitive check
-    spark_sql_lower = spark_sql.lower()
-    
-    relevant_bq_tables = set()
-    for hive_table, bq_table in all_mappings.items():
-        # Simple check if hive table name exists in SQL (could be false positive but safer than complex parsing)
-        if hive_table in spark_sql_lower:
-            relevant_bq_tables.add(bq_table)
+    relevant_bq_tables = set(table_mapping.values())
             
-    logger.info(f"[Node: convert] Identified {len(relevant_bq_tables)} potentially relevant BigQuery tables")
+    logger.info(f"[Node: convert] Identified {len(relevant_bq_tables)} relevant BigQuery tables")
     
     for bq_table in relevant_bq_tables:
         ddl = bq_service.get_table_ddl(bq_table)
@@ -147,7 +140,7 @@ def convert_node(state: AgentState) -> dict[str, Any]:
     
     # Apply table name replacement as a safety net
     # (in case the LLM didn't apply all mappings correctly)
-    bigquery_sql = table_mapping_service.replace_table_names(bigquery_sql)
+    bigquery_sql = table_mapping_service.replace_table_names(bigquery_sql, table_mapping)
     
     logger.debug(f"[Node: convert] Final BigQuery SQL ({len(bigquery_sql)} chars):\n{bigquery_sql}", extra={"type": "status", "step": "convert", "status": "success"})
     

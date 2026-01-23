@@ -94,11 +94,12 @@ class TableMappingService:
         """
         return self._mappings.copy()
     
-    def replace_table_names(self, sql: str) -> str:
+    def replace_table_names(self, sql: str, mappings: Optional[dict[str, str]] = None) -> str:
         """Replace all Spark table names in SQL with BigQuery table names.
         
         Args:
             sql: The SQL statement with Spark table names.
+            mappings: Optional dictionary of mappings to use. If None, uses all loaded mappings.
             
         Returns:
             SQL statement with BigQuery table names.
@@ -107,7 +108,7 @@ class TableMappingService:
         
         # Sort mappings by length (longest first) to avoid partial replacements
         sorted_mappings = sorted(
-            self._mappings.items(),
+            (mappings or self._mappings).items(),
             key=lambda x: len(x[0]),
             reverse=True
         )
@@ -133,17 +134,22 @@ class TableMappingService:
         
         return result
     
-    def get_mapping_info_for_prompt(self) -> str:
+    def get_mapping_info_for_prompt(self, mappings: Optional[dict[str, str]] = None) -> str:
         """Generate a formatted string of table mappings for use in prompts.
         
+        Args:
+            mappings: Optional dictionary of mappings to use. If None, uses all loaded mappings.
+            
         Returns:
             Formatted string listing all table mappings.
         """
-        if not self._mappings:
+        target_mappings = mappings if mappings is not None else self._mappings
+        
+        if not target_mappings:
             return "No table mappings available."
         
         lines = ["## Table Name Mappings (Spark → BigQuery):"]
-        for spark_table, bq_table in sorted(self._mappings.items()):
+        for spark_table, bq_table in sorted(target_mappings.items()):
             lines.append(f"- {spark_table} → `{bq_table}`")
         
         return "\n".join(lines)

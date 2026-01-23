@@ -2,3 +2,4 @@ new_table,ground_truth_table
 trip-htl-bi-dbprj.tool_results.dw_htlbizdb_edw_traf_ht_server_trip_rmlist_server_ser_hour,trip-htl-bi-dbprj.htl_bi_temp.dw_htlbizdb_edw_traf_ht_server_trip_rmlist_server_ser_hour
 trip-htl-bi-dbprj.tool_results.dim_hoteldb_dimhotel_output,trip-htl-bi-dbprj.htl_bi_temp.dim_hoteldb_dimhotel
 trip-htl-bi-dbprj.htl_bi_temp.dwhtl_adm_svr_sqty_user_tour_trial_df,trip-htl-bi-dbprj.tool_results.dwhtl_adm_svr_sqty_user_tour_trial_df
+trip-htl-bi-dbprj.tool_results.dw_htlbizdb_cdm_traf_hs_ibu_user_seq_click_base_v4_result,trip-htl-bi-dbprj.htl_bi_temp.dw_htlbizdb_cdm_traf_hs_ibu_user_seq_click_base_v4_result

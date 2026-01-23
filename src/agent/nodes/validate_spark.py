@@ -47,12 +47,19 @@ def validate_spark_node(state: AgentState) -> dict[str, Any]:
         parsed = sqlglot.parse(spark_sql, read="spark")
         
         for expression in parsed:
+            # Collect CTE aliases to exclude them from source tables
+            cte_aliases = {cte.alias for cte in expression.find_all(exp.CTE)}
+            
             # Extract all tables from the expression
             for table in expression.find_all(exp.Table):
                 table_name = table.name
+                
                 # Handle db.table format if present
                 if table.db:
                     table_name = f"{table.db}.{table_name}"
+                elif table_name in cte_aliases:
+                    # Skip CTE references
+                    continue
                 
                 source_tables.add(table_name)
                 
