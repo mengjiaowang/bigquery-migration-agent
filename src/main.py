@@ -181,7 +181,7 @@ async def convert_sql(request: ConvertRequest):
     """
     logger.info("=" * 60)
     logger.info("[API] Received conversion request")
-    logger.info(f"[API] Input Spark SQL:\n{request.spark_sql}")
+    logger.debug(f"[API] Input Spark SQL:\n{request.spark_sql}")
     
     try:
         # Run the conversion workflow in a separate thread to avoid blocking the event loop
@@ -216,7 +216,7 @@ async def convert_sql(request: ConvertRequest):
         logger.info(f"[API] Validation Success: {result['validation_success']}")
         logger.info(f"[API] Retry Count: {result['retry_count']}")
         if result.get("bigquery_sql"):
-            logger.info(f"[API] Final BigQuery SQL:\n{result['bigquery_sql']}")
+            logger.debug(f"[API] Final BigQuery SQL:\n{result['bigquery_sql']}")
         if result.get("validation_error"):
             logger.error(f"[API] Validation Error: {result['validation_error']}")
         if result.get("spark_error"):

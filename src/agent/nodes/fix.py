@@ -24,10 +24,19 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     """
     retry_count = state["retry_count"] + 1
     
+    # Determine which error to fix
+    # If validation passed but we are here, it must be an execution error
+    if state.get("validation_success") and state.get("execution_error"):
+        error_message = state["execution_error"]
+        error_type = "execution"
+    else:
+        error_message = state.get("validation_error")
+        error_type = "validation"
+    
     logger.info("=" * 60)
     logger.info(f"[Node: fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "fix", "status": "loading", "attempt": retry_count})
-    logger.info(f"[Node: fix] Previous error: {state['validation_error']}")
-    logger.info(f"[Node: fix] SQL to fix:\n{state['bigquery_sql']}")
+    logger.info(f"[Node: fix] Previous error ({error_type}): {error_message}")
+    logger.debug(f"[Node: fix] SQL to fix:\n{state['bigquery_sql']}")
     
     llm = get_llm()
     
@@ -49,7 +58,8 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     prompt = FIX_BIGQUERY_PROMPT.format(
         spark_sql=state["spark_sql"],
         bigquery_sql=state["bigquery_sql"],
-        error_message=state["validation_error"],
+        error_message=error_message,
+        table_ddls=state.get("table_ddls", "No DDLs available."),
         conversion_history=history_str,
     )
     
@@ -65,7 +75,7 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     # (in case the LLM didn't apply all mappings correctly)
     fixed_sql = table_mapping_service.replace_table_names(fixed_sql)
     
-    logger.info(f"[Node: fix] Fixed BigQuery SQL:\n{fixed_sql}")
+    logger.debug(f"[Node: fix] Fixed BigQuery SQL:\n{fixed_sql}")
     
     return {
         "bigquery_sql": fixed_sql,
