@@ -18,35 +18,24 @@ SHARED_SQL_CONVERSION_RULES = """
 When extracting fields from the json object:
 
 * **Requirement:** Handle both scalars and non-scalars dynamically.
-* **Formula:** Use `COALESCE(JSON_VALUE(json, '$.field'), CAST(json(rm_json, '$.field') AS STRING))`.
+* **Formula:** Use `COALESCE(JSON_VALUE(t.json_value, '$.field1'), CAST(JSON_EXTRACT(t.json_value, '$.field1') AS STRING))`.
 * **Behavior:** This automatically removes quotes for strings/numbers but returns a JSON-formatted string for objects/arrays, perfectly matching Spark's `get_json_object` and `json_tuple` behavior.
 
 #### **Rule 2: Converting `explode` to `UNNEST**`
 
-For `LATERAL VIEW explode(get_json_object(col, '$.path'))`:
+- For `LATERAL VIEW explode(...)`: Spark SQL drops rows with invalid JSON, you **MUST** apply `WHERE COALESCE(rm_json,'') <> ''` in the query to ensure strict row-count parity with Spark’s inner-join behavior
+- For `LATERAL VIEW OUTER explode(...)`: Use `LEFT JOIN UNNEST(JSON_QUERY_ARRAY(json_obj.path))
 
-* If the Spark SQL uses `LATERAL VIEW json_tuple(...)` (without OUTER), it drops rows with invalid JSON. You MUST replicate this
-* Apply `WHERE json_obj IS NOT NULL` in the query to ensure strict row-count parity with Spark’s inner-join behavior.
-
-For `LATERAL VIEW [OUTER] explode(get_json_object(col, '$.path'))`:
-
-* **Transformation:** Use `CROSS JOIN UNNEST(JSON_QUERY_ARRAY(json_obj.path)) AS array_item` (or `LEFT JOIN` for `OUTER`).
-* **Integration:** Since we already have the `json_obj` from the CTE, do not re-parse the string. Access the array directly via the `JSON` object.
-
-
-#### **Rule 3: SQL Structure Template**
+##### SQL Example 1: A single LATERAL VIEW clause **
 
 Spark SQL: 
 ```sql
 SELECT
-  field1,
-  field2,
-  field3
+  field1, field2, field3
 FROM table t 
 LATERAL VIEW json_tuple(t.data['value'], 'field1', 'field2', 'field3') jt as field1, field2, field3
-
-The SQL conversion should follow this structure:
-
+```
+The BigQuery SQL:
 ```sql
 SELECT
   *,
@@ -60,8 +49,31 @@ FROM
     (SELECT value FROM UNNEST(data) WHERE key = 'value') AS json_value
   FROM table
 ) AS t_base
-WHERE COALESCE(t_base.json_value,'') <> ''
-            
+WHERE COALESCE(t_base.json_value,'') <> '' -- You have to apply this filter to ensure strict row-count parity with Spark’s inner-join behavior         
+```
+
+##### SQL Example 2: Multiple LATERAL VIEW clauses **
+
+Spark SQL: 
+
+```sql
+SELECT
+  field1, field2, field3
+FROM table t 
+LATERAL VIEW OUTER EXPLODE(udf.json_split(t.json_obj_list)) as json_data
+LATERAL VIEW json_tuple(json_data, 'field1', 'field2', 'field3') jt AS  field1, field2, field3
+```
+
+The BigQuery SQL:
+
+```sql
+SELECT
+  COALESCE(JSON_VALUE(t_base.json_value, '$.field1'), CAST(JSON_EXTRACT(t_base.json_value, '$.field1') AS STRING)) as field1,
+  COALESCE(JSON_VALUE(t_base.json_value, '$.field2'), CAST(JSON_EXTRACT(t_base.json_value, '$.field2') AS STRING)) as field2,
+  COALESCE(JSON_VALUE(t_base.json_value, '$.field3'), CAST(JSON_EXTRACT(t_base.json_value, '$.field3') AS STRING)) as field3
+FROM table t 
+LEFT JOIN UNNEST(JSON_QUERY_ARRAY(t.json_obj_list)) as json_data
+WHERE COALESCE(json_data,'') <> ''
 ```
 
 ### 2. ⚠️ DDL & Partition Handling (Transaction Mode)
@@ -78,68 +90,27 @@ For **any** `INSERT OVERWRITE TABLE target PARTITION (p_col=val) ...`:
 4. **Commit:** `COMMIT TRANSACTION;`
 
 **Example:**
-
+Spark:
 ```sql
--- Spark:
 INSERT OVERWRITE TABLE db.target PARTITION (dt = '2023-10-01')
 SELECT col1, col2 FROM source;
-
--- BigQuery:
+```
+BigQuery:
+```sql
 BEGIN TRANSACTION;
-
 -- Step 1: Delete target partition
 DELETE FROM `trip-htl-bi-dbprj.htl_bi_temp.db_target`
 WHERE dt = '2023-10-01';
-
 -- Step 2: Insert new data (include partition column in SELECT)
 INSERT INTO `trip-htl-bi-dbprj.htl_bi_temp.db_target` (col1, col2, dt)
 SELECT col1, col2, '2023-10-01'
 FROM `trip-htl-bi-dbprj.htl_bi_temp.db_source`;
-
 COMMIT TRANSACTION;
-
 ```
-
-#### 2.2 Dynamic Partitions
-
-If the partition is dynamic (e.g., `PARTITION (dt)`), use the logic from the SELECT clause to define the scope, or if not possible, use `INSERT INTO` directly (but prefer the Transaction pattern if the overwrite scope is determinable).
 
 ### 3. ⚠️ Critical Syntax & Type Safety
 
 #### 3.1 Strict Type Handling (No Implicit Conversion)
-
-BigQuery does NOT support implicit casting. You MUST use `SAFE_CAST`.
-
-* **Comparisons:** `WHERE str_col > 0` ➡️ `WHERE SAFE_CAST(str_col AS INT64) > 0`
-* **COALESCE:** Arguments must match types. `nvl(num_col, '')` ➡️ `COALESCE(num_col, 0)`
-
-#### 3.2 GROUP BY Syntax
-
-Remove columns listed *before* `GROUPING SETS`.
-
-* Spark: `GROUP BY a, b GROUPING SETS ((a,b))` ➡️ BQ: `GROUP BY GROUPING SETS ((a,b))`
-
-### 4. Variable & Macro Conversion (Native Mode)
-
-Convert Spark scheduling macros (`${{...}}`) directly into native BigQuery functions. **Remove quotes** around the resulting function.
-
-| Spark Macro | BigQuery Equivalent |
-| --- | --- |
-| `${{zdt.format("yyyy-MM-dd")}}` | `CURRENT_DATE()` |
-| `${{zdt.addDay(-1).format("yyyy-MM-dd")}}` | `DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)` |
-| `${{zdt.format("yyyyMMdd")}}` | `FORMAT_DATE('%Y%m%d', CURRENT_DATE())` |
-
-* **Date Comparison:** `d = '${{zdt...}}'` ➡️ `d = CURRENT_DATE()`
-* **Dynamic Tables (Read):** `FROM db.table_${{zdt...}}` ➡️ `FROM \`trip...db_table_*` WHERE _TABLE_SUFFIX = ...`
-
-### 5. Complex Data Types (Map/Array)
-
-* **Map Access:** `map['key']` ➡️ `JSON_VALUE(map_col, '$.key')`
-* **Explode:** `LATERAL VIEW explode(col) t AS item` ➡️ `CROSS JOIN UNNEST(col) AS item` (Alias strictly after parenthesis)
-* **Regex:** Use raw strings `r'...'` (e.g., `REGEXP_REPLACE(col, r'\d', 'X')`).
-
-
-### 6. Handling Type Mismatch (STRING vs INT64)
 
 * **BigQuery is strongly typed and does not support implicit conversion between STRING and INT64 (e.g., `Operator = for argument types: STRING, INT64` error). 
 * **You must use the table DDL to check the data type of the column and apply the following rules:
@@ -157,6 +128,30 @@ If comparing a STRING column with an INT64 column, explicitly cast the types to 
 (3) Inequality Logic (>, <):
 If a STRING column is involved in a numerical range check (e.g., `country > 1`), you must cast it to ensure numerical comparison rather than dictionary (lexicographical) order.
 - Example: `WHERE country > 1` → `WHERE SAFE_CAST(country AS INT64) > 1`.
+
+#### 3.2 GROUP BY Syntax
+
+Remove columns listed *before* `GROUPING SETS`.
+
+* Spark: `GROUP BY a, b GROUPING SETS ((a,b))` ➡️ BQ: `GROUP BY GROUPING SETS ((a,b))`
+
+### 4. Variable & Macro Conversion (Native Mode)
+
+Convert Spark scheduling macros (`${{...}}`) directly into native BigQuery functions. **Remove quotes** around the resulting function.
+
+| Spark Macro | BigQuery Equivalent |
+| --- | --- |
+| `${{zdt.format("yyyy-MM-dd")}}` | `CURRENT_DATE()` |
+| `${{zdt.addDay(-1).format("yyyy-MM-dd")}}` | `DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)` |
+| `${{zdt.format("yyyyMMdd")}}` | `FORMAT_DATE('%Y%m%d', CURRENT_DATE())` |
+
+Date Comparison:** `d = '${{zdt...}}'` ➡️ `d = CURRENT_DATE()`
+Dynamic Tables (Read):** `FROM db.table_${{zdt...}}` ➡️ `FROM \`trip...db_table_*` WHERE _TABLE_SUFFIX = ...`
+
+### 5. Regular Expression
+
+Use raw strings `r'...'` (e.g., `REGEXP_REPLACE(col, r'\d', 'X')`).
+
 """
 
 SPARK_TO_BIGQUERY_PROMPT = """
