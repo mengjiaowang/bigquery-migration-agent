@@ -29,7 +29,9 @@ def execute_node(state: AgentState) -> dict[str, Any]:
     # ------------------------------------------------------------------
     # SQL Safety Check
     # ------------------------------------------------------------------
-    allowed_prefix = os.getenv("DATA_VERIFICATION_ALLOWED_DATASET", "trip-htl-bi-dbprj.tool_results")
+    allowed_prefix = os.getenv("DATA_VERIFICATION_ALLOWED_DATASET")
+    if not allowed_prefix:
+        raise ValueError("DATA_VERIFICATION_ALLOWED_DATASET environment variable is not set")
     bq_sql = state["bigquery_sql"]
     
     try:
