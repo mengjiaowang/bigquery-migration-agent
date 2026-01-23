@@ -1,8 +1,6 @@
 """Prompt templates for Spark to BigQuery SQL conversion."""
 
-SPARK_TO_BIGQUERY_PROMPT = """
-You are an expert SQL translator. Convert Spark SQL to functionally equivalent, **executable** BigQuery SQL.
-
+SHARED_SQL_CONVERSION_RULES = """
 ## Guiding Principles (STRICT)
 
 1. **Logic Equality:** The execution logic must be **exactly** the same as Spark. Do NOT optimize the query for BigQuery performance if it changes the structure (e.g., maintain JOIN order unless necessary for syntax).
@@ -13,25 +11,58 @@ You are an expert SQL translator. Convert Spark SQL to functionally equivalent, 
 
 ## Conversion Rules
 
-### 1. ⚠️ Table Mapping & Naming (Mandatory)
+### 1. JSON Functions
 
-**Target Dataset:** All tables (Input and Output) reside in: `trip-htl-bi-dbprj.htl_bi_temp`
-**Naming Convention:** `{{original_database}}_{{original_table_name}}`
+#### **Rule 1: Extracting Fields (The "Universal Extraction" Rule)**
 
-#### 1.1 Conversion Logic
+When extracting fields from the json object:
 
-You MUST map every table reference `db.table` to the specific BigQuery path using backticks.
+* **Requirement:** Handle both scalars and non-scalars dynamically.
+* **Formula:** Use `COALESCE(JSON_VALUE(json, '$.field'), CAST(json(rm_json, '$.field') AS STRING))`.
+* **Behavior:** This automatically removes quotes for strings/numbers but returns a JSON-formatted string for objects/arrays, perfectly matching Spark's `get_json_object` and `json_tuple` behavior.
 
-* **Rule:** `database.table_name`  ➡️  ``trip-htl-bi-dbprj.htl_bi_temp.{{database}}_{{table_name}}``
-* **Example:** `dw_htlbizdb.dim_hotel` ➡️  ``trip-htl-bi-dbprj.htl_bi_temp.dw_htlbizdb_dim_hotel``
+#### **Rule 2: Converting `explode` to `UNNEST**`
 
-#### 1.2 Output Tables
+For `LATERAL VIEW explode(get_json_object(col, '$.path'))`:
 
-Apply the same mapping rule to the target table in `INSERT` statements.
+* If the Spark SQL uses `LATERAL VIEW json_tuple(...)` (without OUTER), it drops rows with invalid JSON. You MUST replicate this
+* Apply `WHERE json_obj IS NOT NULL` in the query to ensure strict row-count parity with Spark’s inner-join behavior.
 
-#### 1.3 Exceptions
+For `LATERAL VIEW [OUTER] explode(get_json_object(col, '$.path'))`:
 
-dim_hoteldb.dimcity shoule be: trip-htl-bi-dbprj.htl_bi_temp.dim_hoteldb_dimcity_source
+* **Transformation:** Use `CROSS JOIN UNNEST(JSON_QUERY_ARRAY(json_obj.path)) AS array_item` (or `LEFT JOIN` for `OUTER`).
+* **Integration:** Since we already have the `json_obj` from the CTE, do not re-parse the string. Access the array directly via the `JSON` object.
+
+
+#### **Rule 3: SQL Structure Template**
+
+Spark SQL: 
+```sql
+SELECT
+  field1,
+  field2,
+  field3
+FROM table t 
+LATERAL VIEW json_tuple(t.data['value'], 'field1', 'field2', 'field3') jt as field1, field2, field3
+
+The SQL conversion should follow this structure:
+
+```sql
+SELECT
+  *,
+  COALESCE(JSON_VALUE(t_base.json_value, '$.field1'), CAST(JSON_EXTRACT(t_base.json_value, '$.field1') AS STRING)) as field1
+  COALESCE(JSON_VALUE(t_base.json_value, '$.field2'), CAST(JSON_EXTRACT(t_base.json_value, '$.field2') AS STRING)) as field2
+  COALESCE(JSON_VALUE(t_base.json_value, '$.field3'), CAST(JSON_EXTRACT(t_base.json_value, '$.field3') AS STRING)) as field3
+FROM
+(
+  SELECT 
+    *,
+    (SELECT value FROM UNNEST(data) WHERE key = 'value') AS json_value
+  FROM table
+) AS t_base
+WHERE COALESCE(t_base.json_value,'') <> ''
+            
+```
 
 ### 2. ⚠️ DDL & Partition Handling (Transaction Mode)
 
@@ -126,13 +157,15 @@ If comparing a STRING column with an INT64 column, explicitly cast the types to 
 (3) Inequality Logic (>, <):
 If a STRING column is involved in a numerical range check (e.g., `country > 1`), you must cast it to ensure numerical comparison rather than dictionary (lexicographical) order.
 - Example: `WHERE country > 1` → `WHERE SAFE_CAST(country AS INT64) > 1`.
+"""
 
-## Output Requirements:
+SPARK_TO_BIGQUERY_PROMPT = """
+You are an expert SQL translator. Convert Spark SQL to functionally equivalent, **executable** BigQuery SQL.
 
-1. Return **ONLY** the converted BigQuery SQL code.
-2. **No** markdown block wrappers (unless strictly necessary for code display).
-3. **No** explanations.
-
+## Input Spark SQL:
+```sql
+{spark_sql}
+```
 
 ## Target Table DDLs:
 
@@ -141,9 +174,13 @@ If a STRING column is involved in a numerical range check (e.g., `country > 1`),
 ## Table Mapping information: 
 {table_mapping_info}
 
-## Input Spark SQL:
-```sql
-{spark_sql}
+""" + SHARED_SQL_CONVERSION_RULES + """
+
+## Output Requirements:
+
+1. Return **ONLY** the converted BigQuery SQL code.
+2. **No** markdown block wrappers (unless strictly necessary for code display).
+3. **No** explanations.
 
 ```
 """
@@ -203,59 +240,20 @@ You are a BigQuery SQL Expert and Debugger. Your goal is to fix the provided "Cu
 
 ---
 
-## Debugging & Fixing Guidelines
+""" + SHARED_SQL_CONVERSION_RULES + """
 
-Apply the following rules to resolve errors. Prioritize the specific error message provided.
+## Detailed Fix Guidelines (Supplementary)
 
-### A. Syntax & Structure Fixes
+If the error persists or is not covered by the main rules, check these specific strict requirements:
 
+### A. Syntax Checks
 1. **Backticks:** Wrap ALL table names in backticks (e.g., `project-id.dataset.table`), especially if they contain hyphens.
-2. **Unnest Syntax:**
-* Replace `LATERAL VIEW explode(col)` with `CROSS JOIN UNNEST(col) AS alias`.
-* **Crucial:** Place the alias *after* the closing parenthesis of UNNEST.
-* *Correct:* `CROSS JOIN UNNEST(my_array) AS item`
-* *Wrong:* `CROSS JOIN UNNEST(my_array item)`
+2. **Multi-statement:** Ensure statements are separated by semicolons `;`.
+3. **Window Functions:** If `HAVING` filters a window function result, wrap the query in a subquery and use `WHERE`.
 
-
-3. **Grouping Sets:** Ensure no columns are listed between `GROUP BY` and `GROUPING SETS`.
-* *Correct:* `GROUP BY GROUPING SETS ((a, b), (a))`
-
-
-4. **Multi-statement:** Ensure statements are separated by semicolons `;`.
-5. **Window Functions:** If `HAVING` filters a window function result, wrap the query in a subquery and use `WHERE`.
-
-### B. Data Type & Function Mapping
-
-1. **Strict Types:** Use `INT64` (not INT), `FLOAT64` (not DOUBLE), `BOOL` (not BOOLEAN).
-2. **ID Columns (String vs Int):** If comparing a String ID (e.g., `hotelid`, `cityid`) to a number, use `SAFE_CAST(col AS INT64)`.
-3. **Coalesce/IfNull:** Ensure arguments have matching types.
-* Numeric: `COALESCE(num_col, 0)`
-* String: `COALESCE(str_col, '')` or `COALESCE(CAST(id_col AS STRING), '')`
-
-
-4. **Arrays:**
-* `collect_list` → `ARRAY_AGG`
-* `size(arr)` → `ARRAY_LENGTH(arr)`
-* `concat_ws` → `ARRAY_TO_STRING([a, b], separator)`. Ensure elements are CAST to STRING first.
-
-
-5. **JSON vs Structs:**
-* If column is `ARRAY<STRUCT>`, use `UNNEST`. Do NOT use `JSON_EXTRACT` functions.
-* If column is JSON String, use `JSON_EXTRACT_SCALAR`.
-
-
-### C. Date & Partition Handling
-
-1. **Partition Columns:** NEVER use `PARSE_DATE` on a partition column that is already a DATE. Instead, cast the *value* you are comparing against.
-* *Correct:* `d = DATE('2024-01-01')`
-
-
-2. **Spark Macros:** Convert `${{zdt...}}` macros to native BigQuery functions:
-* `'${{zdt.add(0).format("yyyy-MM-dd")}}'` → `CURRENT_DATE()`
-* `'${{zdt.add(-1).format("yyyy-MM-dd")}}'` → `DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)`
-* Remove quotes around the resulting function calls.
-
----
+### B. Common Fix Patterns
+1. **Unnest Alias:** `CROSS JOIN UNNEST(col) AS alias`. The AS alias must be **outside** the parentheses.
+2. **Grouping Sets:** `GROUP BY GROUPING SETS ((a, b), (a))`. No columns before `GROUPING SETS`.
 
 ## Output Requirement
 
