@@ -83,14 +83,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-STATIC_DIR = Path(__file__).parent.parent / "static"
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+UI_DIR = Path(__file__).parent.parent / "ui"
+app.mount("/assets", StaticFiles(directory=UI_DIR), name="assets")
 
 
 @app.get("/ui")
 async def serve_ui():
     """Serve the frontend UI."""
-    html_path = STATIC_DIR / "index.html"
+    html_path = UI_DIR / "index.html"
     if html_path.exists():
         return FileResponse(html_path)
     raise HTTPException(status_code=404, detail="UI not found")

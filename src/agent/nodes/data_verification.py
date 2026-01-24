@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def load_verification_mapping() -> Dict[str, str]:
     """Load verification mapping from CSV file."""
     mapping = {}
-    csv_path = os.path.join(os.getcwd(), "data/data_verify.csv")
+    csv_path = os.path.join(os.getcwd(), "data/table_verify.csv")
     
     if not os.path.exists(csv_path):
         logger.warning(f"[Node: data_verification] Mapping file not found at {csv_path}")
