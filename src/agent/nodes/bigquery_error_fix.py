@@ -38,7 +38,7 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     
     logger.info("=" * 60)
     logger.info(f"[Node: bigquery_error_fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "bigquery_error_fix", "status": "loading", "attempt": retry_count})
-    logger.info(f"[Node: bigquery_error_fix] Previous error ({error_type}): {error_message}")
+
     logger.debug(f"[Node: bigquery_error_fix] SQL to fix:\n{state['bigquery_sql']}")
     
     llm = get_llm("bigquery_error_fix")
@@ -79,6 +79,8 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     
     logger.debug(f"[Node: bigquery_error_fix] Fixed BigQuery SQL:\n{fixed_sql}")
     
+    logger.info(f"[Node: bigquery_error_fix] SQL fixed successfully", extra={"type": "status", "step": "bigquery_error_fix", "status": "success"})
+
     return {
         "bigquery_sql": fixed_sql,
         "retry_count": retry_count,
