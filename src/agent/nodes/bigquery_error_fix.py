@@ -13,7 +13,7 @@ from src.services.utils import get_content_text
 logger = logging.getLogger(__name__)
 
 
-def fix_node(state: AgentState) -> dict[str, Any]:
+def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     """Fix BigQuery SQL based on validation error.
     
     Args:
@@ -29,20 +29,22 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     if state.get("validation_success") and state.get("execution_error"):
         error_message = state["execution_error"]
         error_type = "execution"
+    elif state.get("llm_check_error"): # Handle LLM check error
+        error_message = state["llm_check_error"]
+        error_type = "llm_check"
     else:
         error_message = state.get("validation_error")
         error_type = "validation"
     
     logger.info("=" * 60)
-    logger.info(f"[Node: fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "fix", "status": "loading", "attempt": retry_count})
-    logger.info(f"[Node: fix] Previous error ({error_type}): {error_message}")
-    logger.debug(f"[Node: fix] SQL to fix:\n{state['bigquery_sql']}")
+    logger.info(f"[Node: bigquery_error_fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "bigquery_error_fix", "status": "loading", "attempt": retry_count})
+    logger.info(f"[Node: bigquery_error_fix] Previous error ({error_type}): {error_message}")
+    logger.debug(f"[Node: bigquery_error_fix] SQL to fix:\n{state['bigquery_sql']}")
     
     llm = get_llm()
     
     # Get table mapping information
     table_mapping_service = get_table_mapping_service()
-    table_mapping_info = table_mapping_service.get_mapping_info_for_prompt()
     
     # Format conversion history for the prompt
     history_str = ""
@@ -75,7 +77,7 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     # (in case the LLM didn't apply all mappings correctly)
     fixed_sql = table_mapping_service.replace_table_names(fixed_sql)
     
-    logger.debug(f"[Node: fix] Fixed BigQuery SQL:\n{fixed_sql}")
+    logger.debug(f"[Node: bigquery_error_fix] Fixed BigQuery SQL:\n{fixed_sql}")
     
     return {
         "bigquery_sql": fixed_sql,

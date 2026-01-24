@@ -1,3 +1,5 @@
+"""Spark SQL validation node."""
+
 import logging
 from typing import Any
 
@@ -11,7 +13,7 @@ from src.services.table_mapping import get_table_mapping_service
 logger = logging.getLogger(__name__)
 
 
-def validate_spark_node(state: AgentState) -> dict[str, Any]:
+def spark_sql_validate(state: AgentState) -> dict[str, Any]:
     """Validate the input Spark SQL syntax and extract table mappings.
     
     Args:
@@ -21,7 +23,7 @@ def validate_spark_node(state: AgentState) -> dict[str, Any]:
         Updated state with spark_valid, spark_error, source_tables, and table_mapping.
     """
     logger.info("=" * 60)
-    logger.info("[Node: validate_spark] Starting Spark SQL validation", extra={"type": "status", "step": "spark", "status": "loading"})
+    logger.info("[Node: spark_sql_validate] Starting Spark SQL validation", extra={"type": "status", "step": "spark_sql_validate", "status": "loading"})
     
     spark_sql = state["spark_sql"].strip()
     
@@ -71,9 +73,9 @@ def validate_spark_node(state: AgentState) -> dict[str, Any]:
         # Convert to sorted list for determinism
         source_tables_list = sorted(list(source_tables))
         
-        logger.info("[Node: validate_spark] ✓ Spark SQL is valid", extra={"type": "status", "step": "spark", "status": "success"})
-        logger.info(f"[Node: validate_spark] Extracted tables: {source_tables_list}")
-        logger.info(f"[Node: validate_spark] Mapped tables: {table_map}")
+        logger.info("[Node: spark_sql_validate] ✓ Spark SQL is valid", extra={"type": "status", "step": "spark_sql_validate", "status": "success"})
+        logger.info(f"[Node: spark_sql_validate] Extracted tables: {source_tables_list}")
+        logger.info(f"[Node: spark_sql_validate] Mapped tables: {table_map}")
         
         return {
             "spark_valid": True,
@@ -84,7 +86,7 @@ def validate_spark_node(state: AgentState) -> dict[str, Any]:
         
     except Exception as e:
         error_msg = str(e)
-        logger.warning(f"[Node: validate_spark] ✗ Spark SQL is invalid: {error_msg}", extra={"type": "status", "step": "spark", "status": "error"})
+        logger.warning(f"[Node: spark_sql_validate] ✗ Spark SQL is invalid: {error_msg}", extra={"type": "status", "step": "spark_sql_validate", "status": "error"})
         
         return {
             "spark_valid": False,

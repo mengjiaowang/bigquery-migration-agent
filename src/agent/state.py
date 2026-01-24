@@ -43,3 +43,7 @@ class AgentState(TypedDict):
     data_verification_success: Optional[bool]
     data_verification_result: Optional[dict | str]
     data_verification_error: Optional[str]
+    
+    # LLM Check results
+    llm_check_success: Optional[bool]
+    llm_check_error: Optional[str]

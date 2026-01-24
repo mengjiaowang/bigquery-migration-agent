@@ -47,7 +47,7 @@ def _convert_single_chunk(spark_sql: str, table_mapping_info: str, table_ddls: s
     return bigquery_sql
 
 
-def convert_node(state: AgentState) -> dict[str, Any]:
+def sql_convert(state: AgentState) -> dict[str, Any]:
     """Convert Spark SQL to BigQuery SQL.
     
     For long SQL statements, this function will:
@@ -63,13 +63,13 @@ def convert_node(state: AgentState) -> dict[str, Any]:
         Updated state with bigquery_sql.
     """
     logger.info("=" * 60)
-    logger.info("[Node: convert] Starting Spark to BigQuery conversion", extra={"type": "status", "step": "convert", "status": "loading"})
+    logger.info("[Node: sql_convert] Starting Spark to BigQuery conversion", extra={"type": "status", "step": "sql_convert", "status": "loading"})
     
     spark_sql = state['spark_sql']
     sql_length = len(spark_sql)
     sql_lines = spark_sql.count('\n')
     
-    logger.info(f"[Node: convert] Input SQL: {sql_length} chars, {sql_lines} lines")
+    logger.info(f"[Node: sql_convert] Input SQL: {sql_length} chars, {sql_lines} lines")
     
     # Get table mapping information
     table_mapping_service = get_table_mapping_service()
@@ -77,7 +77,7 @@ def convert_node(state: AgentState) -> dict[str, Any]:
     table_mapping = state.get("table_mapping", {})
     table_mapping_info = table_mapping_service.get_mapping_info_for_prompt(table_mapping)
     
-    logger.info(f"[Node: convert] Using {len(table_mapping)} table mappings from state")
+    logger.info(f"[Node: sql_convert] Using {len(table_mapping)} table mappings from state")
     
     # Fetch DDLs for relevant tables
     bq_service = BigQueryService()
@@ -85,15 +85,15 @@ def convert_node(state: AgentState) -> dict[str, Any]:
     
     relevant_bq_tables = set(table_mapping.values())
             
-    logger.info(f"[Node: convert] Identified {len(relevant_bq_tables)} relevant BigQuery tables")
+    logger.info(f"[Node: sql_convert] Identified {len(relevant_bq_tables)} relevant BigQuery tables")
     
     for bq_table in relevant_bq_tables:
         ddl = bq_service.get_table_ddl(bq_table)
         if ddl:
             table_ddls_list.append(f"-- DDL for {bq_table}:\n{ddl}")
-            logger.info(f"[Node: convert] Fetched DDL for {bq_table}")
+            logger.info(f"[Node: sql_convert] Fetched DDL for {bq_table}")
         else:
-            logger.warning(f"[Node: convert] Could not fetch DDL for {bq_table}")
+            logger.warning(f"[Node: sql_convert] Could not fetch DDL for {bq_table}")
             
     table_ddls = "\n\n".join(table_ddls_list) if table_ddls_list else "No DDLs available."
     
@@ -105,19 +105,19 @@ def convert_node(state: AgentState) -> dict[str, Any]:
     chunking_mode = os.getenv("SQL_CHUNKING_MODE", "auto").lower()
     if chunking_mode == "disabled":
         use_chunking = False
-        logger.info("[Node: convert] SQL chunking disabled by configuration")
+        logger.info("[Node: sql_convert] SQL chunking disabled by configuration")
     elif chunking_mode == "always":
         use_chunking = True
-        logger.info("[Node: convert] SQL chunking forced by configuration")
+        logger.info("[Node: sql_convert] SQL chunking forced by configuration")
     
     if use_chunking:
-        logger.info("[Node: convert] Using chunked conversion strategy")
+        logger.info("[Node: sql_convert] Using chunked conversion strategy")
         
         # Analyze and chunk
         chunks = chunker.analyze_and_chunk()
         
         if len(chunks) > 1:
-            logger.info(f"[Node: convert] Split into {len(chunks)} chunks")
+            logger.info(f"[Node: sql_convert] Split into {len(chunks)} chunks")
             
             # Create converter with the single-chunk converter function
             def converter_func(sql: str) -> str:
@@ -126,14 +126,14 @@ def convert_node(state: AgentState) -> dict[str, Any]:
             chunked_converter = ChunkedConverter(converter_func)
             bigquery_sql = chunked_converter.convert_chunks(chunks)
             
-            logger.info("[Node: convert] Chunked conversion completed")
+            logger.info("[Node: sql_convert] Chunked conversion completed")
         else:
             # Only one chunk, convert normally
-            logger.info("[Node: convert] SQL analyzed but no chunking needed")
+            logger.info("[Node: sql_convert] SQL analyzed but no chunking needed")
             bigquery_sql = _convert_single_chunk(spark_sql, table_mapping_info, table_ddls)
     else:
         # Direct conversion without chunking
-        logger.info("[Node: convert] Using direct conversion (no chunking)")
+        logger.info("[Node: sql_convert] Using direct conversion (no chunking)")
         bigquery_sql = _convert_single_chunk(spark_sql, table_mapping_info, table_ddls)
     
     bq_service.close()
@@ -142,8 +142,8 @@ def convert_node(state: AgentState) -> dict[str, Any]:
     # (in case the LLM didn't apply all mappings correctly)
     bigquery_sql = table_mapping_service.replace_table_names(bigquery_sql, table_mapping)
     
-    logger.info(f"[Node: convert] Conversion completed ({len(bigquery_sql)} chars)", extra={"type": "status", "step": "convert", "status": "success"})
-    logger.debug(f"[Node: convert] Final BigQuery SQL:\n{bigquery_sql}")
+    logger.info(f"[Node: sql_convert] Conversion completed ({len(bigquery_sql)} chars)", extra={"type": "status", "step": "sql_convert", "status": "success"})
+    logger.debug(f"[Node: sql_convert] Final BigQuery SQL:\n{bigquery_sql}")
     
     return {
         "bigquery_sql": bigquery_sql,

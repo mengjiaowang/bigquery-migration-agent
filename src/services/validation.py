@@ -1,23 +1,10 @@
-"""BigQuery validation service with configurable validation mode."""
+"""BigQuery validation service using dry run only."""
 
-import json
-import os
 import re
 from dataclasses import dataclass
-from enum import Enum
 from typing import Optional
 
-from src.prompts.templates import BIGQUERY_VALIDATION_PROMPT
-from src.services.bigquery import BigQueryService, DryRunResult
-from src.services.llm import get_llm
-from src.services.utils import get_content_text
-
-
-class ValidationMode(str, Enum):
-    """Supported BigQuery validation modes."""
-    
-    DRY_RUN = "dry_run"  # Use BigQuery API dry run
-    LLM = "llm"          # Use LLM prompt-based validation
+from src.services.bigquery import BigQueryService
 
 
 @dataclass
@@ -97,28 +84,7 @@ def replace_template_variables(sql: str) -> str:
     return result
 
 
-def get_validation_mode() -> ValidationMode:
-    """Get the configured validation mode from environment.
-    
-    Returns:
-        ValidationMode enum value.
-        
-    Raises:
-        ValueError: If mode is not supported.
-    """
-    mode = os.getenv("BQ_VALIDATION_MODE", "dry_run").lower()
-    
-    try:
-        return ValidationMode(mode)
-    except ValueError:
-        supported = ", ".join([m.value for m in ValidationMode])
-        raise ValueError(
-            f"Unsupported validation mode: {mode}. "
-            f"Supported modes: {supported}"
-        )
-
-
-def validate_with_dry_run(sql: str) -> ValidationResult:
+def validate_bigquery_sql(sql: str) -> ValidationResult:
     """Validate BigQuery SQL using BigQuery API dry run.
     
     Template variables (like ${zdt.format(...)}) are replaced with valid
@@ -144,61 +110,3 @@ def validate_with_dry_run(sql: str) -> ValidationResult:
         )
     finally:
         bq_service.close()
-
-
-def validate_with_llm(sql: str) -> ValidationResult:
-    """Validate BigQuery SQL using LLM prompt-based validation.
-    
-    Args:
-        sql: The BigQuery SQL to validate.
-        
-    Returns:
-        ValidationResult with success status and error message.
-    """
-    llm = get_llm()
-    
-    prompt = BIGQUERY_VALIDATION_PROMPT.format(bigquery_sql=sql)
-    response = llm.invoke(prompt)
-    
-    try:
-        # Clean up response - remove markdown code blocks if present
-        response_text = get_content_text(response.content).strip()
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            response_text = "\n".join(lines[1:-1])
-        
-        result = json.loads(response_text)
-        is_valid = result.get("is_valid", False)
-        error = result.get("error")
-        
-        return ValidationResult(
-            success=is_valid,
-            error_message=error if not is_valid else None,
-            validation_mode="llm",
-        )
-    except json.JSONDecodeError:
-        # If we can't parse the response, assume invalid
-        return ValidationResult(
-            success=False,
-            error_message=f"Failed to parse LLM validation response: {response.content}",
-            validation_mode="llm",
-        )
-
-
-def validate_bigquery_sql(sql: str) -> ValidationResult:
-    """Validate BigQuery SQL using the configured validation mode.
-    
-    Args:
-        sql: The BigQuery SQL to validate.
-        
-    Returns:
-        ValidationResult with success status and error message.
-    """
-    mode = get_validation_mode()
-    
-    if mode == ValidationMode.DRY_RUN:
-        return validate_with_dry_run(sql)
-    elif mode == ValidationMode.LLM:
-        return validate_with_llm(sql)
-    else:
-        raise ValueError(f"Unsupported validation mode: {mode}")

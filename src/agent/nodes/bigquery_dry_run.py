@@ -1,4 +1,4 @@
-"""BigQuery SQL validation node."""
+"""BigQuery SQL validation node (Dry Run)."""
 
 import logging
 from typing import Any
@@ -11,12 +11,8 @@ from src.services.validation import validate_bigquery_sql
 logger = logging.getLogger(__name__)
 
 
-def validate_node(state: AgentState) -> dict[str, Any]:
-    """Validate BigQuery SQL using configured validation mode.
-    
-    The validation mode is controlled by BQ_VALIDATION_MODE environment variable:
-    - "dry_run": Use BigQuery API dry run (default)
-    - "llm": Use LLM prompt-based validation
+def bigquery_dry_run(state: AgentState) -> dict[str, Any]:
+    """Validate BigQuery SQL using BigQuery dry run.
     
     Args:
         state: Current agent state containing bigquery_sql.
@@ -27,19 +23,17 @@ def validate_node(state: AgentState) -> dict[str, Any]:
     attempt = len(state.get("conversion_history", [])) + 1
     
     logger.info("=" * 60)
-    logger.info(f"[Node: validate] Starting BigQuery SQL validation (attempt {attempt})", extra={"type": "status", "step": "bq_dry_run", "status": "loading", "attempt": attempt})
+    logger.info(f"[Node: bigquery_dry_run] Starting BigQuery SQL validation (attempt {attempt})", extra={"type": "status", "step": "bigquery_dry_run", "status": "loading", "attempt": attempt})
     logger.debug(f"BigQuery SQL to validate:\n{state['bigquery_sql']}")
     
     result = validate_bigquery_sql(state["bigquery_sql"])
     
-    logger.info(f"[Node: validate] Validation mode: {result.validation_mode}")
-    
     if result.success:
-        logger.info(f"[Node: validate] ✓ BigQuery SQL validation passed", extra={"type": "status", "step": "bq_dry_run", "status": "success"})
+        logger.info(f"[Node: bigquery_dry_run] ✓ BigQuery SQL validation passed", extra={"type": "status", "step": "bigquery_dry_run", "status": "success"})
     else:
         logger.error("=" * 60)
-        logger.error(f"[Node: validate] ✗ BigQuery SQL validation FAILED (attempt {attempt})", extra={"type": "status", "step": "bq_dry_run", "status": "error"})
-        logger.error(f"[Node: validate] Error Details:")
+        logger.error(f"[Node: bigquery_dry_run] ✗ BigQuery SQL validation FAILED (attempt {attempt})", extra={"type": "status", "step": "bigquery_dry_run", "status": "error"})
+        logger.error(f"[Node: bigquery_dry_run] Error Details:")
         logger.error("-" * 40)
         # 打印完整的错误信息，每行都打印
         for line in str(result.error_message).split('\n'):
@@ -59,6 +53,6 @@ def validate_node(state: AgentState) -> dict[str, Any]:
     return {
         "validation_success": result.success,
         "validation_error": result.error_message,
-        "validation_mode": result.validation_mode,
+        "validation_mode": "dry_run",
         "conversion_history": history,
     }

@@ -26,33 +26,32 @@ When extracting fields from the json object:
 - For `LATERAL VIEW explode(...)`: Spark SQL drops rows with invalid JSON, you **MUST** apply `WHERE COALESCE(rm_json,'') <> ''` in the query to ensure strict row-count parity with Spark’s inner-join behavior
 - For `LATERAL VIEW OUTER explode(...)`: Use `LEFT JOIN UNNEST(JSON_QUERY_ARRAY(json_obj.path))
 
-##### SQL Example 1: A single LATERAL VIEW clause **
+#### **Rule 3: Apply filter to `LATERAL VIEW json_tuple()`
+
+lateral view json_tuple
+
+##### Example 1: convert a single LATERAL VIEW json_tuple
 
 Spark SQL: 
 ```sql
 SELECT
   field1, field2, field3
 FROM table t 
-LATERAL VIEW json_tuple(t.data['value'], 'field1', 'field2', 'field3') jt as field1, field2, field3
+LATERAL VIEW json_tuple(data, 'field1', 'field2', 'field3') jt as field1, field2, field3
 ```
+
 The BigQuery SQL:
 ```sql
 SELECT
   *,
-  COALESCE(JSON_VALUE(t_base.json_value, '$.field1'), CAST(JSON_EXTRACT(t_base.json_value, '$.field1') AS STRING)) as field1
-  COALESCE(JSON_VALUE(t_base.json_value, '$.field2'), CAST(JSON_EXTRACT(t_base.json_value, '$.field2') AS STRING)) as field2
-  COALESCE(JSON_VALUE(t_base.json_value, '$.field3'), CAST(JSON_EXTRACT(t_base.json_value, '$.field3') AS STRING)) as field3
-FROM
-(
-  SELECT 
-    *,
-    (SELECT value FROM UNNEST(data) WHERE key = 'value') AS json_value
-  FROM table
-) AS t_base
-WHERE COALESCE(t_base.json_value,'') <> '' -- You have to apply this filter to ensure strict row-count parity with Spark’s inner-join behavior         
+  COALESCE(JSON_VALUE(data, '$.field1'), CAST(JSON_EXTRACT(data, '$.field1') AS STRING)) as field1
+  COALESCE(JSON_VALUE(data, '$.field2'), CAST(JSON_EXTRACT(data, '$.field2') AS STRING)) as field2
+  COALESCE(JSON_VALUE(data, '$.field3'), CAST(JSON_EXTRACT(data, '$.field3') AS STRING)) as field3
+FROM table t
+WHERE COALESCE(data,'') <> '' -- You have to apply this filter to ensure strict row-count parity with Spark’s inner-join behavior         
 ```
 
-##### SQL Example 2: Multiple LATERAL VIEW clauses **
+##### Example 2: convert LATERAL VIEW OUTER EXPLODE followed by LATERAL VIEW json_tuple
 
 Spark SQL: 
 
@@ -73,7 +72,7 @@ SELECT
   COALESCE(JSON_VALUE(t_base.json_value, '$.field3'), CAST(JSON_EXTRACT(t_base.json_value, '$.field3') AS STRING)) as field3
 FROM table t 
 LEFT JOIN UNNEST(JSON_QUERY_ARRAY(t.json_obj_list)) as json_data
-WHERE COALESCE(json_data,'') <> ''
+WHERE COALESCE(json_data,'') <> '' -- You have to apply this filter to ensure strict row-count parity with Spark’s inner-join behavior  
 ```
 
 ### 2. ⚠️ DDL & Partition Handling (Transaction Mode)
@@ -163,7 +162,6 @@ You are an expert SQL translator. Convert Spark SQL to functionally equivalent, 
 ```
 
 ## Target Table DDLs:
-
 {table_ddls}
 
 ## Table Mapping information: 
@@ -178,31 +176,6 @@ You are an expert SQL translator. Convert Spark SQL to functionally equivalent, 
 3. **No** explanations.
 
 ```
-"""
-
-
-BIGQUERY_VALIDATION_PROMPT = """You are a BigQuery SQL syntax expert. Validate if the following SQL is valid BigQuery syntax.
-
-```sql
-{bigquery_sql}
-```
-
-Respond in JSON format only:
-{{
-    "is_valid": true/false,
-    "error": "detailed error message if invalid, null if valid"
-}}
-
-Check for:
-1. Valid function names and argument counts
-2. Correct data types (INT64, FLOAT64, BOOL, STRING, etc.)
-3. Proper UNNEST / CROSS JOIN syntax
-4. Valid table references with backticks
-5. Correct GROUP BY with aggregates
-6. Valid window function syntax
-7. Proper GROUPING SETS / ROLLUP / CUBE syntax
-
-Be permissive on: table existence, column names, custom UDFs.
 """
 
 FIX_BIGQUERY_PROMPT = """
@@ -255,4 +228,43 @@ If the error persists or is not covered by the main rules, check these specific 
 * Return **ONLY** the corrected BigQuery SQL code block.
 * Do NOT include markdown like "Here is the fixed code" or explanations.
 * Do NOT output JSON.
+"""
+
+LLM_SQL_CHECK_PROMPT = """
+# Role
+You are a BigQuery SQL Validator. Your task is to check if the converted BigQuery SQL follows the following rules:
+
+""" + SHARED_SQL_CONVERSION_RULES + """
+
+## Context Data
+### 1. Original Spark SQL:
+```sql
+{spark_sql}
+```
+
+### 2. Converted BigQuery SQL (To Verify):
+```sql
+{bigquery_sql}
+```
+
+### 3. Target Table DDLs:
+{table_ddls}
+
+---
+
+## Output Format
+Return a JSON object with the following structure:
+{{
+    "is_valid": boolean,
+    "error": "string" // Error message if is_valid is false, null otherwise
+}}
+
+If valid, set "is_valid" to true and "error" to null.
+If invalid, set "is_valid" to false and provide a concise, actionable error message in "error".
+
+Example Output:
+{{
+    "is_valid": true,
+    "error": null
+}}
 """

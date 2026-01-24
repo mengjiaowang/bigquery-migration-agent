@@ -236,6 +236,8 @@ async def convert_sql(request: ConvertRequest):
             validation_success=result["validation_success"],
             validation_error=result.get("validation_error"),
             validation_mode=result.get("validation_mode"),
+            llm_check_success=result.get("llm_check_success"),
+            llm_check_error=result.get("llm_check_error"),
             retry_count=result["retry_count"],
             conversion_history=history,
             warning=warning,

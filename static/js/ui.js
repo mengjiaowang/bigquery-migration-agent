@@ -68,11 +68,12 @@ export function handleStatusUpdate(event) {
     
     // Map step to DOM ID
     const stepMap = {
-        'spark': 'sparkStatus',
-        'convert': 'convertStatus',
-        'bq_dry_run': 'bqStatus',
-        'fix': 'bqStatus',  // Fix is part of BQ validation loop
-        'execute': 'executionStatus',
+        'spark_sql_validate': 'sparkStatus',
+        'sql_convert': 'convertStatus',
+        'llm_sql_check': 'llmCheckStatus',
+        'bigquery_dry_run': 'bqStatus',
+        'bigquery_error_fix': 'bqStatus',
+        'bigquery_sql_execute': 'executionStatus',
         'data_verification': 'dataVerificationStatus'
     };
     
