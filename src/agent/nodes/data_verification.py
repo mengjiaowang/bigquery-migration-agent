@@ -16,7 +16,7 @@ def load_verification_mapping() -> Dict[str, str]:
     """Load verification mapping from CSV file."""
     mapping = {}
     # Assuming the script runs from the project root
-    csv_path = os.path.join(os.getcwd(), "tests/data/data_verify.csv")
+    csv_path = os.path.join(os.getcwd(), "data/data_verify.csv")
     
     if not os.path.exists(csv_path):
         logger.warning(f"[Node: data_verification] Mapping file not found at {csv_path}")

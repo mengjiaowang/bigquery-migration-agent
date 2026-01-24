@@ -48,7 +48,7 @@ class TableMappingService:
             # Default path: tests/data/hive2bq.csv relative to project root
             csv_path = os.getenv(
                 "TABLE_MAPPING_CSV",
-                str(Path(__file__).parent.parent.parent / "tests" / "data" / "hive2bq.csv")
+                str(Path(__file__).parent.parent.parent / "data" / "hive2bq.csv")
             )
         
         if not os.path.exists(csv_path):
