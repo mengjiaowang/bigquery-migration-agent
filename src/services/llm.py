@@ -6,7 +6,7 @@ from typing import Optional
 
 import google.auth
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +59,8 @@ def get_llm(node_name: Optional[str] = None) -> BaseChatModel:
         
     logger.info(f"[LLM] Request for node '{node_name}' -> Model: {model} (Vertex AI), Project: {project_id}, Location: {location}")
     
-    return ChatVertexAI(
-        model_name=model,
+    return ChatGoogleGenerativeAI(
+        model=model,
         project=project_id,
         location=location,
         temperature=0.1,

@@ -1,6 +1,6 @@
 // Initialize Mermaid
 mermaid.initialize({ 
-    startOnLoad: true,
+    startOnLoad: false,
     theme: 'dark',
     securityLevel: 'loose',
     flowchart: {
@@ -44,7 +44,7 @@ export function escapeHtml(text) {
 
 export function addLog(level, message, fromServer = false) {
     const infoPanel = document.getElementById('infoPanel');
-    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
     const line = document.createElement('div');
     line.className = 'info-line';
     
@@ -79,12 +79,12 @@ export function addServerLog(logEntry) {
 
 export function clearInput() {
     document.getElementById('sparkSql').value = '';
-    addLog('info', '已清空输入');
+    addLog('info', 'Input cleared');
 }
 
 export function clearLogs() {
     document.getElementById('infoPanel').innerHTML = '';
-    addLog('info', '日志已清除');
+    addLog('info', 'Logs cleared');
 }
 
 export function updateStatus(status, message) {
@@ -102,8 +102,9 @@ function setNodeStatus(nodeId, status) {
     // Determine class
     const className = status; // running, success, error
     
-    // Mermaid renders nodes with IDs like "flowchart-Spark-..."
-    const selector = `g.node[id^="flowchart-${nodeId}-"]`; 
+    // Mermaid renders nodes with IDs like "flowchart-Spark-..." but format varies by version
+    // Use substring match to be safer
+    const selector = `g.node[id*="${nodeId}"]`; 
     const node = document.querySelector(selector);
     
     if (node) {
@@ -139,11 +140,11 @@ export function handleStatusUpdate(event) {
     
     // Also update global status text
     if (status === 'loading') {
-        let msg = `正在执行: ${step}...`;
-        if (attempt) msg += ` (第 ${attempt} 次)`;
+        let msg = `Executing: ${step}...`;
+        if (attempt) msg += ` (Attempt ${attempt})`;
         updateStatus('loading', msg);
     } else if (status === 'completed') {
-        updateStatus('success', '转换完成');
+        updateStatus('success', 'Conversion Completed');
         setNodeStatus('End', 'success');
     }
 }
@@ -191,35 +192,37 @@ export function resetStatusCards() {
     // Clear SQL output
     const bqOutput = document.getElementById('bqOutput');
     if (bqOutput) {
-        bqOutput.textContent = '转换结果将在这里显示';
+    if (bqOutput) {
+        bqOutput.textContent = 'Conversion results will appear here';
+    }
     }
 }
 
 export function loadSample(sampleSql) {
     document.getElementById('sparkSql').value = sampleSql;
-    addLog('info', '已加载示例 SQL');
+    addLog('info', 'Sample SQL loaded');
 }
 
 export function copyOutput() {
     const output = document.getElementById('bqOutput').textContent;
-    if (!output || output.trim() === '转换结果将在这里显示') {
-        addLog('warning', '没有可复制的内容');
+    if (!output || output.trim() === 'Conversion results will appear here') {
+        addLog('warning', 'Nothing to copy');
         return;
     }
     
     navigator.clipboard.writeText(output).then(() => {
         const btn = document.getElementById('copyBtn');
         const originalText = btn.textContent;
-        btn.textContent = '已复制!';
+        btn.textContent = 'Copied!';
         btn.classList.add('copied');
         
         setTimeout(() => {
             btn.textContent = originalText;
             btn.classList.remove('copied');
         }, 2000);
-        addLog('info', '已复制到剪贴板');
+        addLog('info', 'Copied to clipboard');
     }).catch(err => {
         console.error('Copy failed:', err);
-        addLog('error', '复制失败');
+        addLog('error', 'Copy failed');
     });
 }

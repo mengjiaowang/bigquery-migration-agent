@@ -31,8 +31,8 @@ def test_llm_config():
     
     try:
         llm = get_llm("sql_convert")
-        # ChatVertexAI uses .model_name
-        model_name = getattr(llm, "model_name", "unknown")
+        # ChatGoogleGenerativeAI uses .model
+        model_name = getattr(llm, "model", "unknown")
         log(f"Default (sql_convert): {model_name} (Expected: gemini-2.5-flash)")
     except Exception as e:
         log(f"Default test failed: {e}")
@@ -56,7 +56,7 @@ def test_llm_config():
     os.environ["SQL_CONVERT_MODEL"] = "gemini-1.5-pro"
     try:
         llm = get_llm("sql_convert")
-        model_name = getattr(llm, "model_name", "unknown")
+        model_name = getattr(llm, "model", "unknown")
         log(f"Override (sql_convert): {model_name} (Expected: gemini-1.5-pro)")
     except Exception as e:
         log(f"Override test failed: {e}")
@@ -66,7 +66,7 @@ def test_llm_config():
     
     try:
         llm = get_llm("llm_sql_check")
-        model_name = getattr(llm, "model_name", "unknown")
+        model_name = getattr(llm, "model", "unknown")
         log(f"Claude (llm_sql_check): {model_name} (Expected: claude-3-5-sonnet@20240620)")
     except Exception as e:
         log(f"Claude test failed: {e}")

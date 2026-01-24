@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spark → BigQuery SQL 转换器</title>
+    <title>Spark → BigQuery SQL Converter</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -17,12 +17,12 @@
                 <div class="logo-icon">🔄</div>
                 <div class="logo-text">
                     <h1>SQL Transformer</h1>
-                    <span>Spark → BigQuery 智能转换</span>
+                    <span>Spark → BigQuery Intelligent Conversion</span>
                 </div>
             </div>
             <div class="status-badge">
                 <div class="status-dot" id="statusDot"></div>
-                <span id="statusText">服务就绪</span>
+                <span id="statusText">Service Ready</span>
             </div>
         </div>
     </header>
@@ -33,14 +33,12 @@
             <div class="panel-header">
                 <div class="panel-title">
                     <div class="panel-title-icon" style="background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));">🚦</div>
-                    <span>执行状态</span>
+                    <span>Execution Status</span>
                 </div>
             </div>
             <div class="panel-body">
                 <div class="mermaid-container">
-                    <div class="mermaid" id="workflowGraph">
-                        <!-- Graph will be rendered here by ui.js -->
-                    </div>
+                    <div class="mermaid" id="workflowGraph"></div>
                 </div>
             </div>
         </div>
@@ -50,18 +48,18 @@
             <div class="panel-header">
                 <div class="panel-title">
                     <div class="panel-title-icon spark">💥</div>
-                    <span>Spark SQL 输入</span>
+                    <span>Spark SQL Input</span>
                 </div>
-                <button class="copy-btn" onclick="clearInput()">清空</button>
+                <button class="copy-btn" onclick="clearInput()">Clear</button>
             </div>
             <div class="panel-body">
                 <div class="code-editor">
                     <textarea 
                         class="code-textarea" 
                         id="sparkSql" 
-                        placeholder="在此输入 Spark SQL 语句...
+                        placeholder="Enter Spark SQL statement here...
 
-示例:
+Example:
 SELECT 
     user_id,
     COUNT(*) as cnt
@@ -73,11 +71,11 @@ GROUP BY user_id"
                 <div class="action-bar">
                     <button class="btn btn-primary" id="convertBtn">
                         <span class="btn-icon">⚡</span>
-                        <span id="convertBtnText">开始转换</span>
+                        <span id="convertBtnText">Start Conversion</span>
                     </button>
                     <button class="btn btn-secondary" onclick="loadSample()">
                         <span class="btn-icon">📄</span>
-                        加载示例
+                        Load Sample
                     </button>
                 </div>
             </div>
@@ -88,11 +86,11 @@ GROUP BY user_id"
             <div class="panel-header">
                 <div class="panel-title">
                     <div class="panel-title-icon bq">📊</div>
-                    <span>BigQuery SQL 输出</span>
+                    <span>BigQuery SQL Output</span>
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <button class="copy-btn" id="saveBtn" style="display: none;">💾 保存</button>
-                    <button class="copy-btn" id="copyBtn">复制</button>
+                    <button class="copy-btn" id="saveBtn" style="display: none;">💾 Save</button>
+                    <button class="copy-btn" id="copyBtn">Copy</button>
                 </div>
             </div>
             <div class="panel-body">
@@ -100,7 +98,7 @@ GROUP BY user_id"
                     <div class="code-output" id="bqOutput">
                         <div class="empty-state">
                             <div class="empty-state-icon">📝</div>
-                            <div>转换结果将在这里显示</div>
+                            <div>Conversion results will appear here</div>
                         </div>
                     </div>
                 </div>
@@ -112,16 +110,16 @@ GROUP BY user_id"
             <div class="panel-header">
                 <div class="panel-title">
                     <div class="panel-title-icon info">📋</div>
-                    <span>实时日志</span>
+                    <span>Real-time Logs</span>
                 </div>
-                <button class="copy-btn" onclick="clearLogs()">清除日志</button>
+                <button class="copy-btn" onclick="clearLogs()">Clear Logs</button>
             </div>
             <div class="panel-body">
                 <div class="info-content" id="infoPanel">
                     <div class="info-line">
-                        <span class="info-time">[系统]</span>
+                        <span class="info-time">[System]</span>
                         <span class="info-level info">INFO</span>
-                        <span class="info-message">SQL 转换器已就绪，等待输入...</span>
+                        <span class="info-message">SQL Converter is ready, waiting for input...</span>
                     </div>
                 </div>
             </div>

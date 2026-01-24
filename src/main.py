@@ -40,6 +40,11 @@ setup_log_streaming()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    # Initialize the log loop reference for thread-safe logging
+    init_log_loop()
+    from src.services.log_stream import _loop
+    logger.info(f"Log loop initialized: {_loop}")
+    
     # Startup: Validate required environment variables
     llm_provider = os.getenv("LLM_PROVIDER", "gemini").lower()
     validation_mode = os.getenv("BQ_VALIDATION_MODE", "dry_run").lower()

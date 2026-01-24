@@ -35,7 +35,7 @@ def bigquery_dry_run(state: AgentState) -> dict[str, Any]:
         logger.error(f"[Node: bigquery_dry_run] ✗ BigQuery SQL validation FAILED (attempt {attempt})", extra={"type": "status", "step": "bigquery_dry_run", "status": "error"})
         logger.error(f"[Node: bigquery_dry_run] Error Details:")
         logger.error("-" * 40)
-        # 打印完整的错误信息，每行都打印
+        # Print complete error message, line by line
         for line in str(result.error_message).split('\n'):
             logger.error(f"  {line}")
         logger.error("-" * 40)

@@ -4,3 +4,5 @@ venv
 .env
 *.pyc
 data/*
+.pytest_cache
+.agent

@@ -55,10 +55,14 @@ class StreamingLogHandler(logging.Handler):
                             queue.put_nowait(log_entry)
                         except asyncio.QueueFull:
                             pass
-                except Exception:
-                    pass  # Ignore errors during emit
+                except Exception as e:
+                    import sys
+                    print(f"Error in emit to subscriber: {e}", file=sys.stderr)
+                    pass
                     
-        except Exception:
+        except Exception as e:
+            import sys
+            print(f"Error in emit: {e}", file=sys.stderr)
             self.handleError(record)
 
 
@@ -87,6 +91,8 @@ def setup_log_streaming() -> None:
     # Add to root logger
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
+    
+
 
 
 async def subscribe_logs() -> AsyncGenerator[dict, None]:

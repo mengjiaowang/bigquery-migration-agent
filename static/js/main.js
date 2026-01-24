@@ -110,7 +110,7 @@ async function handleConvert() {
 
     const sparkSql = document.getElementById('sparkSql').value.trim();
     if (!sparkSql) {
-        UI.addLog('warning', '请输入 Spark SQL');
+        UI.addLog('warning', 'Please enter Spark SQL');
         return;
     }
 
@@ -119,16 +119,16 @@ async function handleConvert() {
     const btnText = document.getElementById('convertBtnText');
     
     btn.disabled = true;
-    btnText.innerHTML = '<div class="spinner"></div> 转换中...';
+    btnText.innerHTML = '<div class="spinner"></div> Converting...';
     UI.resetStatusCards();
-    UI.updateStatus('loading', '正在转换...');
+    UI.updateStatus('loading', 'Converting...');
 
     try {
         const startTime = Date.now();
         const result = await convertSql(sparkSql);
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-        UI.addLog('info', `转换完成，耗时 ${duration}s`);
+        UI.addLog('info', `Conversion completed, duration ${duration}s`);
         
         lastConversionResult = {
             ...result,
@@ -146,33 +146,33 @@ async function handleConvert() {
         }
 
         if (result.validation_success) {
-            UI.updateStatus('success', '转换成功');
+            UI.updateStatus('success', 'Conversion Successful');
         } else {
-            UI.updateStatus('error', '验证失败');
+            UI.updateStatus('error', 'Validation Failed');
         }
 
         if (result.success) {
-            UI.addLog('success', '🎉 转换完全成功!');
+            UI.addLog('success', '🎉 Conversion Fully Successful!');
         }
         
         if (result.execution_success) {
-            let msg = '🚀 SQL 执行成功';
+            let msg = '🚀 SQL Execution Successful';
             if (result.execution_target_table) {
-                msg += ` | 目标表: ${result.execution_target_table}`;
+                msg += ` | Target Table: ${result.execution_target_table}`;
             }
             UI.addLog('success', msg);
         } else if (result.execution_error) {
-            UI.addLog('error', `SQL 执行失败: ${result.execution_error}`);
+            UI.addLog('error', `SQL Execution Failed: ${result.execution_error}`);
         }
 
     } catch (error) {
         console.error('Conversion failed:', error);
-        UI.addLog('error', `请求失败: ${error.message}`);
-        UI.updateStatus('error', '请求失败');
+        UI.addLog('error', `Request Failed: ${error.message}`);
+        UI.updateStatus('error', 'Request Failed');
     } finally {
         isConverting = false;
         btn.disabled = false;
-        btnText.textContent = '开始转换';
+        btnText.textContent = 'Start Conversion';
     }
 }
 
@@ -188,5 +188,5 @@ function saveResult() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    UI.addLog('info', '结果已保存');
+    UI.addLog('info', 'Result saved');
 }
