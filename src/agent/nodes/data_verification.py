@@ -8,14 +8,12 @@ from typing import Any, Dict, Optional
 from src.agent.state import AgentState
 from src.services.bigquery import BigQueryService
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 
 def load_verification_mapping() -> Dict[str, str]:
     """Load verification mapping from CSV file."""
     mapping = {}
-    # Assuming the script runs from the project root
     csv_path = os.path.join(os.getcwd(), "data/data_verify.csv")
     
     if not os.path.exists(csv_path):
@@ -63,7 +61,6 @@ def data_verification(state: AgentState) -> dict[str, Any]:
             logger.info(f"[Node: data_verification] Found ground truth table: {ground_truth_table}. Mode: {verification_mode}")
             
             if verification_mode == "full_content":
-                # Full content verification using EXCEPT DISTINCT
                 # Check (T1 - T2) U (T2 - T1) is empty
                 check_sql = f"""
                     SELECT count(*) as diff_count FROM (
@@ -101,7 +98,6 @@ def data_verification(state: AgentState) -> dict[str, Any]:
                     }
 
             else:
-                # Row count verification (Default)
                 check_sql = f"""
                     SELECT 
                         (SELECT count(*) FROM `{target_table}`) as target_cnt,
@@ -138,7 +134,6 @@ def data_verification(state: AgentState) -> dict[str, Any]:
                      }
 
         else:
-            # Fallback to simple existence check if no mapping found
             logger.info("[Node: data_verification] No ground truth mapping found. Running simple existence check.")
             check_sql = f"SELECT count(*) as cnt FROM `{target_table}`"
             logger.debug(f"[Node: data_verification] Running check: {check_sql}")

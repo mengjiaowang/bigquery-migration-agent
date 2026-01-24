@@ -15,7 +15,7 @@ def get_model_name(node_name: Optional[str] = None) -> str:
     """Get the model name for a specific node.
     
     Args:
-        node_name: Optional name of the node.
+        node_name: Name of the node. Required for model resolution.
         
     Returns:
         Model name string.
@@ -25,14 +25,12 @@ def get_model_name(node_name: Optional[str] = None) -> str:
         node_model = os.getenv(f"{node_name.upper()}_MODEL")
         if node_model:
             return node_model
+    else:
+        raise ValueError("node_name is required to determine the model configuration.")
 
-    # 2. Check default Gemini model
-    default_model = os.getenv("GEMINI_MODEL")
-    if default_model:
-        return default_model
-        
     raise ValueError(
-        "No LLM model configured. Please set GEMINI_MODEL or {NODE_NAME}_MODEL in environment variables."
+        f"No LLM model configured for node '{node_name}'. "
+        f"Please set {node_name.upper()}_MODEL in environment variables. "
     )
 
 

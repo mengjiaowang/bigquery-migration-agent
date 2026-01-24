@@ -6,8 +6,7 @@ from collections import deque
 from datetime import datetime
 from typing import AsyncGenerator, Optional
 
-# Global log buffer and subscribers
-_log_buffer: deque = deque(maxlen=100)  # Keep last 100 logs
+_log_buffer: deque = deque(maxlen=100)
 _subscribers: list[asyncio.Queue] = []
 _loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -18,7 +17,6 @@ class StreamingLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         """Emit a log record to all subscribers."""
         try:
-            # Extract extra fields if present
             extra = record.__dict__
             
             log_entry = {
@@ -29,7 +27,7 @@ class StreamingLogHandler(logging.Handler):
                 "type": extra.get("type", "log"),  # default to "log"
             }
             
-            # Add optional status fields if present
+
             if log_entry["type"] == "status":
                 if "step" in extra:
                     log_entry["step"] = extra["step"]
@@ -40,7 +38,6 @@ class StreamingLogHandler(logging.Handler):
                 if "data" in extra:
                     log_entry["data"] = extra["data"]
             
-            # Add to buffer
             _log_buffer.append(log_entry)
             
             # Send to all subscribers

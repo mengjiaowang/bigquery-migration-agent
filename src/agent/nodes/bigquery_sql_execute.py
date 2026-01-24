@@ -10,7 +10,6 @@ from sqlglot import exp
 from src.agent.state import AgentState
 from src.services.bigquery import BigQueryService
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 
@@ -26,9 +25,7 @@ def bigquery_sql_execute(state: AgentState) -> dict[str, Any]:
     logger.info("============================================================")
     logger.info("[Node: bigquery_sql_execute] Starting BigQuery SQL execution", extra={"type": "status", "step": "bigquery_sql_execute", "status": "loading"})
     
-    # ------------------------------------------------------------------
     # SQL Safety Check
-    # ------------------------------------------------------------------
     allowed_prefix = os.getenv("DATA_VERIFICATION_ALLOWED_DATASET")
     if not allowed_prefix:
         raise ValueError("DATA_VERIFICATION_ALLOWED_DATASET environment variable is not set")
@@ -87,9 +84,7 @@ def bigquery_sql_execute(state: AgentState) -> dict[str, Any]:
             }
         logger.info(f"[Node: bigquery_sql_execute] ✓ Safety Check Passed: Target '{clean_table_name}' is allowed", extra={"type": "status", "step": "bigquery_sql_execute", "status": "success"})
 
-    # ------------------------------------------------------------------
-    # End Safety Check
-    # ------------------------------------------------------------------
+
 
     bq_service = BigQueryService()
     execution_result = bq_service.execute_query(state["bigquery_sql"])

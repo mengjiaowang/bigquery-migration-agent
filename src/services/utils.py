@@ -14,7 +14,6 @@ def get_content_text(content: Union[str, list[Any]]) -> str:
         return content
     
     if isinstance(content, list):
-        # Handle list of content blocks (e.g. from Anthropic/Vertex AI)
         text_parts = []
         for block in content:
             if isinstance(block, str):

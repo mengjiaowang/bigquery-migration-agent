@@ -40,7 +40,7 @@ class BigQueryService:
             project_id: GCP project ID. If not provided, uses GOOGLE_CLOUD_PROJECT 
                        env var or ADC project.
         """
-        # Get project ID from: parameter > env var > ADC
+        # Get project ID (param > env > ADC)
         if project_id:
             self.project_id = project_id
         else:
@@ -83,7 +83,7 @@ class BigQueryService:
         try:
             query_job = self.client.query(sql, job_config=job_config)
             
-            # If we get here, the query is valid
+
             return DryRunResult(
                 success=True,
                 total_bytes_processed=query_job.total_bytes_processed
@@ -93,7 +93,7 @@ class BigQueryService:
             # Extract the error message from BigQuery
             error_message = str(e)
             
-            # Try to get more detailed error info
+            # Enhance error message
             if hasattr(e, 'errors') and e.errors:
                 error_details = []
                 for error in e.errors:
@@ -132,7 +132,6 @@ class BigQueryService:
         try:
             query_job = self.client.query(sql)
             
-            # Wait for the query to complete
             query_job.result()
             
             # Get destination table if available
@@ -142,7 +141,7 @@ class BigQueryService:
             
             # Check statement type
             if query_job.statement_type in ("INSERT", "UPDATE", "DELETE", "MERGE", "CREATE_TABLE", "CREATE_TABLE_AS_SELECT"):
-                # DML/DDL that doesn't return rows (usually)
+                # DML/DDL (no rows)
                 num_dml_affected_rows = query_job.num_dml_affected_rows
                 message = f"Query executed successfully."
                 if num_dml_affected_rows is not None:
@@ -191,7 +190,6 @@ class BigQueryService:
             else:
                 return None
                 
-            # Remove backticks if present
             project = project.strip('`')
             dataset = dataset.strip('`')
             table = table.strip('`')

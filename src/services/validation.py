@@ -31,9 +31,7 @@ def replace_template_variables(sql: str) -> str:
     result = sql
     
     # Replace quoted template variables with BigQuery syntax
-    # Pattern: '${zdt.addDay(N).format("yyyy-MM-dd")}' → FORMAT_DATE('%Y-%m-%d', DATE_ADD(CURRENT_DATE(), INTERVAL N DAY))
-    
-    # zdt.addDay(-N).format patterns (quoted)
+    # zdt.addDay(-N).format patterns
     result = re.sub(
         r"'?\$\{zdt\.addDay\((-?\d+)\)\.format\(['\"]yyyy-MM-dd['\"]\)\}'?",
         lambda m: f"FORMAT_DATE('%Y-%m-%d', DATE_ADD(CURRENT_DATE(), INTERVAL {m.group(1)} DAY))",
@@ -52,7 +50,7 @@ def replace_template_variables(sql: str) -> str:
         result
     )
     
-    # zdt.format patterns (without addDay, quoted)
+    # zdt.format patterns
     result = re.sub(
         r"'?\$\{zdt\.format\(['\"]yyyy-MM-dd['\"]\)\}'?",
         "FORMAT_DATE('%Y-%m-%d', CURRENT_DATE())",
@@ -71,14 +69,14 @@ def replace_template_variables(sql: str) -> str:
         result
     )
     
-    # Generic fallback for any remaining ${zdt...} patterns
+    # Generic fallback
     result = re.sub(
         r"'?\$\{zdt\.[^}]+\}'?",
         "FORMAT_DATE('%Y-%m-%d', CURRENT_DATE())",
         result
     )
     
-    # Final catch-all: replace any remaining ${...} with a placeholder string
+    # Final catch-all
     result = re.sub(r"'?\$\{[^}]+\}'?", "'PLACEHOLDER'", result)
     
     return result
@@ -96,7 +94,6 @@ def validate_bigquery_sql(sql: str) -> ValidationResult:
     Returns:
         ValidationResult with success status and error message.
     """
-    # Replace template variables with valid placeholder values
     sql_for_validation = replace_template_variables(sql)
     
     bq_service = BigQueryService()

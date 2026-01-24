@@ -7,7 +7,6 @@ from src.agent.state import AgentState
 from src.schemas.models import ConversionHistory
 from src.services.validation import validate_bigquery_sql
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +39,6 @@ def bigquery_dry_run(state: AgentState) -> dict[str, Any]:
             logger.error(f"  {line}")
         logger.error("-" * 40)
     
-    # Update conversion history
     history = list(state.get("conversion_history", []))
     history.append(
         ConversionHistory(

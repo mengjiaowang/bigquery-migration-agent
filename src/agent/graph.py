@@ -91,10 +91,8 @@ def create_sql_converter_graph() -> StateGraph:
     Returns:
         Compiled StateGraph for the SQL converter agent.
     """
-    # Create the graph
     workflow = StateGraph(AgentState)
     
-    # Add nodes
     workflow.add_node("spark_sql_validate", spark_sql_validate)
     workflow.add_node("sql_convert", sql_convert)
     workflow.add_node("llm_sql_check", llm_sql_check)
@@ -103,10 +101,8 @@ def create_sql_converter_graph() -> StateGraph:
     workflow.add_node("bigquery_sql_execute", bigquery_sql_execute)
     workflow.add_node("data_verification", data_verification)
     
-    # Set entry point
     workflow.set_entry_point("spark_sql_validate")
     
-    # Add conditional edge after Spark validation
     workflow.add_conditional_edges(
         "spark_sql_validate",
         should_continue_after_spark_validation,
@@ -116,10 +112,8 @@ def create_sql_converter_graph() -> StateGraph:
         }
     )
     
-    # Add edge from convert to dry_run (New Flow: Convert -> Dry Run)
     workflow.add_edge("sql_convert", "bigquery_dry_run")
     
-    # Add conditional edge after dry run
     workflow.add_conditional_edges(
         "bigquery_dry_run",
         should_continue_after_dry_run,
@@ -130,7 +124,6 @@ def create_sql_converter_graph() -> StateGraph:
         }
     )
     
-    # Add conditional edge from llm_sql_check
     workflow.add_conditional_edges(
         "llm_sql_check",
         should_continue_after_llm_check,
@@ -140,7 +133,6 @@ def create_sql_converter_graph() -> StateGraph:
         }
     )
     
-    # Add conditional edge after execution
     workflow.add_conditional_edges(
         "bigquery_sql_execute",
         should_retry_after_execution,
@@ -151,13 +143,10 @@ def create_sql_converter_graph() -> StateGraph:
         }
     )
     
-    # Add edge from data_verification to END
     workflow.add_edge("data_verification", END)
     
-    # Add edge from fix back to dry_run (Always validate syntax first after fix)
     workflow.add_edge("bigquery_error_fix", "bigquery_dry_run")
     
-    # Compile the graph
     return workflow.compile()
 
 
@@ -167,13 +156,13 @@ def run_conversion(spark_sql: str, max_retries: Optional[int] = None) -> AgentSt
     Args:
         spark_sql: The Spark SQL to convert.
         max_retries: Maximum number of retry attempts for fixing BigQuery SQL.
-                     If None, reads from MAX_RETRIES env var (default 10).
+                     If None, reads from AUTO_FIX_MAX_RETRIES env var (default 10).
         
     Returns:
         Final agent state with conversion results.
     """
     if max_retries is None:
-        max_retries = int(os.getenv("MAX_RETRIES", "10"))
+        max_retries = int(os.getenv("AUTO_FIX_MAX_RETRIES", "10"))
 
     graph = create_sql_converter_graph()
     
@@ -199,7 +188,6 @@ def run_conversion(spark_sql: str, max_retries: Optional[int] = None) -> AgentSt
         "llm_check_error": None,
     }
     
-    # Run the graph
     final_state = graph.invoke(initial_state)
     
     return final_state

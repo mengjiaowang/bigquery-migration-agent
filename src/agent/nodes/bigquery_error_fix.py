@@ -9,7 +9,6 @@ from src.services.llm import get_llm
 from src.services.table_mapping import get_table_mapping_service
 from src.services.utils import get_content_text
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 
@@ -24,8 +23,9 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     """
     retry_count = state["retry_count"] + 1
     
-    # Determine which error to fix
-    # If validation passed but we are here, it must be an execution error
+    retry_count = state["retry_count"] + 1
+    
+    # Check for execution error first, then LLM check error, then validation error
     if state.get("validation_success") and state.get("execution_error"):
         error_message = state["execution_error"]
         error_type = "execution"
@@ -46,7 +46,7 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     # Get table mapping information
     table_mapping_service = get_table_mapping_service()
     
-    # Format conversion history for the prompt
+    # Format conversion history
     history_str = ""
     for entry in state.get("conversion_history", []):
         history_str += f"\nAttempt {entry.attempt}:\n"
@@ -67,14 +67,13 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     
     response = llm.invoke(prompt)
     
-    # Clean up response - remove markdown code blocks if present
+    # Remove markdown code blocks
     fixed_sql = get_content_text(response.content).strip()
     if fixed_sql.startswith("```"):
         lines = fixed_sql.split("\n")
         fixed_sql = "\n".join(lines[1:-1]).strip()
     
-    # Apply table name replacement as a safety net
-    # (in case the LLM didn't apply all mappings correctly)
+    # Apply table name mapping
     fixed_sql = table_mapping_service.replace_table_names(fixed_sql)
     
     logger.debug(f"[Node: bigquery_error_fix] Fixed BigQuery SQL:\n{fixed_sql}")

@@ -59,21 +59,22 @@ cp env.example .env
 
 ## ⚙️ Configuration
 
-### LLM Configuration (Google Gemini)
-
+### LLM Configuration (Google Gemini / Vertex AI)
 | Variable | Description |
 |----------|-------------|
-| `LLM_PROVIDER` | Set to `gemini` |
-| `GOOGLE_API_KEY` | Google Gemini API Key |
-| `GEMINI_MODEL` | Gemini Model Name (default: `gemini-1.5-flash`) |
+| `GOOGLE_CLOUD_PROJECT` | GCP Project ID (Required, uses ADC) |
+| `GOOGLE_CLOUD_LOCATION` | Vertex AI Location (Required, e.g., `us-central1`) |
+| `SQL_CONVERT_MODEL` | Model for SQL conversion (e.g., `gemini-1.5-pro`) |
+| `LLM_SQL_CHECK_MODEL` | Model for SQL syntax checking |
+| `BIGQUERY_ERROR_FIX_MODEL` | Model for error fixing |
 
-### BigQuery Validation Configuration
-
-| Variable | Description |
-|----------|-------------|
-| `BQ_VALIDATION_MODE` | Validation mode: `dry_run` or `llm` (default: `dry_run`) |
-| `GOOGLE_PROJECT_ID` | GCP Project ID (Required for `dry_run`) |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to GCP Service Account JSON (Required for `dry_run`) |
+### Connection Configuration
+The service uses **Application Default Credentials (ADC)** for authentication.
+Ensure you have run:
+```bash
+gcloud auth application-default login
+```
+Or set `GOOGLE_APPLICATION_CREDENTIALS` to your service account key path.
 
 ## 🏃 Running the Service
 

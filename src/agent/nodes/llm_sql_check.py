@@ -10,7 +10,6 @@ from src.services.llm import get_llm
 from src.services.table_mapping import get_table_mapping_service
 from src.services.utils import get_content_text
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 
@@ -29,10 +28,7 @@ def llm_sql_check(state: AgentState) -> dict[str, Any]:
     spark_sql = state["spark_sql"]
     bigquery_sql = state["bigquery_sql"]
     
-    # Get table mapping information
     table_mapping_service = get_table_mapping_service()
-    
-    # Get DDLs
     table_ddls = state.get("table_ddls", "No DDLs available.")
     
     prompt = LLM_SQL_CHECK_PROMPT.format(
@@ -45,7 +41,7 @@ def llm_sql_check(state: AgentState) -> dict[str, Any]:
     response = llm.invoke(prompt)
     
     try:
-        # Clean up response - remove markdown code blocks if present
+        # Remove chitchat
         response_text = get_content_text(response.content).strip()
         if response_text.startswith("```"):
             lines = response_text.split("\n")

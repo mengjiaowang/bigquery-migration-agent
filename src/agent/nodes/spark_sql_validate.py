@@ -9,7 +9,6 @@ from sqlglot import exp
 from src.agent.state import AgentState
 from src.services.table_mapping import get_table_mapping_service
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 
@@ -27,7 +26,7 @@ def spark_sql_validate(state: AgentState) -> dict[str, Any]:
     
     spark_sql = state["spark_sql"].strip()
     
-    # Clean up markdown code blocks if present
+    # Remove markdown blocks
     if spark_sql.startswith("```"):
         lines = spark_sql.split("\n")
         # Remove first line (```sql or ```)
@@ -44,33 +43,24 @@ def spark_sql_validate(state: AgentState) -> dict[str, Any]:
     table_map = {}
     
     try:
-        # Parse SQL using sqlglot (read="spark")
-        # parse returns a list of expressions, handling multi-statement SQL
         parsed = sqlglot.parse(spark_sql, read="spark")
         
         for expression in parsed:
-            # Collect CTE aliases to exclude them from source tables
             cte_aliases = {cte.alias for cte in expression.find_all(exp.CTE)}
-            
-            # Extract all tables from the expression
             for table in expression.find_all(exp.Table):
                 table_name = table.name
                 
-                # Handle db.table format if present
                 if table.db:
                     table_name = f"{table.db}.{table_name}"
                 elif table_name in cte_aliases:
-                    # Skip CTE references
                     continue
                 
                 source_tables.add(table_name)
                 
-                # Get BigQuery mapping
                 bq_table = mapping_service.get_bigquery_table(table_name)
                 if bq_table:
                     table_map[table_name] = bq_table
         
-        # Convert to sorted list for determinism
         source_tables_list = sorted(list(source_tables))
         
         logger.info("[Node: spark_sql_validate] ✓ Spark SQL is valid", extra={"type": "status", "step": "spark_sql_validate", "status": "success"})

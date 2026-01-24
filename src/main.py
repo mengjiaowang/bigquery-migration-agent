@@ -19,7 +19,6 @@ from src.schemas.models import ConvertRequest, ConvertResponse, ConversionHistor
 from src.services.log_stream import setup_log_streaming, subscribe_logs, get_recent_logs, init_log_loop
 
 
-# Load environment variables
 load_dotenv()
 
 # Configure logging
@@ -33,34 +32,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Setup log streaming for frontend
 setup_log_streaming()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    # Initialize the log loop reference for thread-safe logging
+    # Initialize thread-safe logging
     init_log_loop()
     from src.services.log_stream import _loop
     logger.info(f"Log loop initialized: {_loop}")
     
     # Startup: Validate required environment variables
-    llm_provider = os.getenv("LLM_PROVIDER", "gemini").lower()
-    validation_mode = os.getenv("BQ_VALIDATION_MODE", "dry_run").lower()
+    # We strictly use Vertex AI (gemini) and Dry Run mode.
     
-    # Required vars based on LLM provider
-    required_vars = []
-    
-    # BigQuery project ID only needed for dry_run mode
-    if validation_mode == "dry_run":
-        required_vars.append("GOOGLE_PROJECT_ID")
-    
-    if llm_provider == "gemini":
-        required_vars.append("GOOGLE_API_KEY")
-    
-    # Vertex AI location is strictly required now
-    required_vars.append("GOOGLE_CLOUD_LOCATION")
+    required_vars = [
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION"
+    ]
     
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     
@@ -70,8 +59,6 @@ async def lifespan(app: FastAPI):
     
     logger.info("=" * 60)
     logger.info("Spark to BigQuery SQL Converter - Starting up")
-    logger.info(f"LLM Provider: {llm_provider}")
-    logger.info(f"BQ Validation Mode: {validation_mode}")
     logger.info(f"Log Level: {log_level}")
     logger.info("=" * 60)
     
@@ -88,7 +75,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -97,7 +83,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files directory
 STATIC_DIR = Path(__file__).parent.parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -114,13 +99,9 @@ async def serve_ui():
 @app.get("/")
 async def root():
     """Root endpoint returning service information."""
-    llm_provider = os.getenv("LLM_PROVIDER", "gemini")
-    validation_mode = os.getenv("BQ_VALIDATION_MODE", "dry_run")
     return {
         "service": "Spark to BigQuery SQL Converter",
         "version": "1.0.0",
-        "llm_provider": llm_provider,
-        "validation_mode": validation_mode,
         "endpoints": {
             "/ui": "GET - Web UI for SQL conversion",
             "/convert": "POST - Convert Spark SQL to BigQuery SQL",
@@ -176,7 +157,7 @@ async def convert_sql(request: ConvertRequest):
     This endpoint:
     1. Validates the input Spark SQL syntax
     2. Converts Spark SQL to BigQuery SQL
-    3. Validates the BigQuery SQL (using dry_run or llm mode based on BQ_VALIDATION_MODE)
+    3. Validates the BigQuery SQL (using dry_run)
     4. Iteratively fixes any errors (up to 3 retries)
     
     Args:
@@ -190,8 +171,7 @@ async def convert_sql(request: ConvertRequest):
     logger.debug(f"[API] Input Spark SQL:\n{request.spark_sql}")
     
     try:
-        # Run the conversion workflow in a separate thread to avoid blocking the event loop
-        # This ensures that log streaming (SSE) continues to function during execution
+        # Run in thread to allow log streaming (SSE) to function during execution
         result = await asyncio.to_thread(run_conversion, request.spark_sql)
         
         # Build conversion history

@@ -22,35 +22,38 @@ def test_llm_config():
             
     log("Testing LLM Configuration...")
     
-    # 1. Test Without Default (Should Fail if logic works, but we set it here to pass basic test)
-    # To strictly test failure we would need to unset env var, but let's test SUCCESS path with env var set
-    os.environ["GEMINI_MODEL"] = "gemini-2.5-flash"
+    # 1. Test Without Default (Should Fail now for sql_convert if explicit env var not set)
+    # Setup connection env vars (required for get_llm even if model is missing, though model check happens first usually?)
+    # Actually get_llm calls get_model_name FIRST. 
+    # But later tests need these.
     os.environ["GOOGLE_API_KEY"] = "dummy" 
     os.environ["GOOGLE_CLOUD_PROJECT"] = "test-project"
     os.environ["GOOGLE_CLOUD_LOCATION"] = "us-central1"
-    
-    try:
-        llm = get_llm("sql_convert")
-        # ChatGoogleGenerativeAI uses .model
-        model_name = getattr(llm, "model", "unknown")
-        log(f"Default (sql_convert): {model_name} (Expected: gemini-2.5-flash)")
-    except Exception as e:
-        log(f"Default test failed: {e}")
 
-    # 1b. Test Failure when no model set
-    if "GEMINI_MODEL" in os.environ:
-        del os.environ["GEMINI_MODEL"]
+    # We must ensure SQL_CONVERT_MODEL is NOT set for this failure test
+    if "SQL_CONVERT_MODEL" in os.environ:
+        del os.environ["SQL_CONVERT_MODEL"]
     
+ 
+
     try:
-        get_llm("unknown_node")
-        log("FAILURE: Expected ValueError not raised for missing GEMINI_MODEL")
+        get_llm("sql_convert")
+        log("FAILURE: Expected ValueError not raised for missing SQL_CONVERT_MODEL")
     except ValueError as e:
         log(f"SUCCESS: Caught expected error for missing model: {e}")
     except Exception as e:
         log(f"FAILURE: Caught unexpected error: {e}")
+
+    # 2. Test Invalid/Missing Node Name
+    try:
+        get_llm(None)
+        log("FAILURE: Expected ValueError not raised for missing node_name")
+    except ValueError as e:
+        log(f"SUCCESS: Caught expected error for missing node_name: {e}")
+    except Exception as e:
+        log(f"FAILURE: Caught unexpected error: {e}")
     
-    # Restore for next tests
-    os.environ["GEMINI_MODEL"] = "gemini-2.5-flash"
+
     
     # 2. Test Override Node Model
     os.environ["SQL_CONVERT_MODEL"] = "gemini-1.5-pro"

@@ -11,7 +11,6 @@ from src.services.sql_chunker import SQLChunker, ChunkedConverter
 from src.services.table_mapping import get_table_mapping_service
 from src.services.utils import get_content_text
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 
@@ -37,7 +36,7 @@ def _convert_single_chunk(spark_sql: str, table_mapping_info: str, table_ddls: s
     )
     response = llm.invoke(prompt)
     
-    # Clean up response - remove markdown code blocks if present
+    # Remove markdown code blocks
     bigquery_sql = get_content_text(response.content).strip()
     if bigquery_sql.startswith("```"):
         lines = bigquery_sql.split("\n")
@@ -71,15 +70,12 @@ def sql_convert(state: AgentState) -> dict[str, Any]:
     
     logger.info(f"[Node: sql_convert] Input SQL: {sql_length} chars, {sql_lines} lines")
     
-    # Get table mapping information
     table_mapping_service = get_table_mapping_service()
-    # Use mappings identified by validate_spark
     table_mapping = state.get("table_mapping", {})
     table_mapping_info = table_mapping_service.get_mapping_info_for_prompt(table_mapping)
     
     logger.info(f"[Node: sql_convert] Using {len(table_mapping)} table mappings from state")
     
-    # Fetch DDLs for relevant tables
     bq_service = BigQueryService()
     table_ddls_list = []
     
@@ -97,11 +93,9 @@ def sql_convert(state: AgentState) -> dict[str, Any]:
             
     table_ddls = "\n\n".join(table_ddls_list) if table_ddls_list else "No DDLs available."
     
-    # Check if chunking is needed
     chunker = SQLChunker(spark_sql)
     use_chunking = chunker.should_chunk()
     
-    # Also check environment variable to force/disable chunking
     chunking_mode = os.getenv("SQL_CHUNKING_MODE", "auto").lower()
     if chunking_mode == "disabled":
         use_chunking = False
@@ -138,8 +132,7 @@ def sql_convert(state: AgentState) -> dict[str, Any]:
     
     bq_service.close()
     
-    # Apply table name replacement as a safety net
-    # (in case the LLM didn't apply all mappings correctly)
+    # Apply table name mapping
     bigquery_sql = table_mapping_service.replace_table_names(bigquery_sql, table_mapping)
     
     logger.info(f"[Node: sql_convert] Conversion completed ({len(bigquery_sql)} chars)", extra={"type": "status", "step": "sql_convert", "status": "success"})
