@@ -5,43 +5,19 @@ import * as UI from './ui.js';
 let isConverting = false;
 let lastConversionResult = null;
 
-const SAMPLE_SQL = `CREATE OR REPLACE TABLE original_target_table
-AS
-WITH
-  ExperimentCounts AS (
-    SELECT
-      experiment_id,
-      experiment_variant_id,
-      COUNT(DISTINCT user_pseudo_id) AS user_count,
-      SUM(COUNT(DISTINCT user_pseudo_id))
-        OVER (PARTITION BY experiment_id) AS total_users_in_experiment
-    FROM
-      abtest
-    GROUP BY
-      experiment_id,
-      experiment_variant_id
-  ),
-  ExpectedCounts AS (
-    SELECT
-      experiment_id,
-      experiment_variant_id,
-      user_count,
-      total_users_in_experiment,
-      total_users_in_experiment / SUM(total_users_in_experiment)
-        OVER () AS expected_proportion,
-      SUM(user_count) OVER () AS total_users_overall
-    FROM
-      ExperimentCounts
-  )
-SELECT
-  experiment_id,
-  experiment_variant_id,
-  user_count,
-  total_users_in_experiment,
-  expected_proportion,
-  total_users_overall
+const SAMPLE_SQL = `SELECT
+  term,
+  refresh_date,
+  rank
 FROM
-  ExpectedCounts`;
+  google_trends_top_terms
+WHERE
+  rank <= 10
+  AND refresh_date >= '2024-01-01'
+ORDER BY
+  refresh_date DESC, 
+  rank ASC
+LIMIT 100`;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
