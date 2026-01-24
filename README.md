@@ -6,31 +6,27 @@ An intelligent, automated service designed to convert Spark SQL queries into Big
 
 ## ✨ Features
 
-- **Spark SQL Validation**: Uses LLM to validate the syntax of input Spark SQL.
+- **Spark SQL Validation**: Uses `sqlglot` to validate the syntax of input Spark SQL.
 - **Intelligent Conversion**: Converts Spark SQL to BigQuery SQL, handling functions, data types, and syntax differences.
 - **Smart Chunking**: Automatically splits large or complex queries (CTEs, Unions, etc.) into manageable chunks for high-quality translation.
-- **Dual Validation Modes**:
-  - **Dry Run Mode** (Recommended): Uses BigQuery API for real validation (requires GCP credentials).
-  - **LLM Mode**: Uses LLM for syntax checking (offline mode).
-- **Auto-Correction**: Automatically iterates to fix SQL errors based on validation feedback (up to 3 retries).
-- **Data Verification**: Optional step to verify execution results against ground truth data.
-
-## 🏗 System Architecture
-
-The core of the system is a stateful graph-based agent implemented with `LangGraph`. The workflow proceeds through a series of nodes, each responsible for a specific stage of the migration process.
-
-![Architecture Diagram](arch_diagram.png)
+- **Dry Run & Execution**: Leverages BigQuery's Dry Run for validation and Execution for result verification, ensuring SQL correctness before deployment.
+- **Auto-Correction**: Automatically iterates to fix SQL errors by analyzing direct feedback (error messages) from BigQuery.
+- **Data Verification**: Optional step to verify execution results against ground truth data (supports row count and full content comparison).
 
 ### Workflow Steps
 
-1.  **Validate Spark SQL**: Checks if the input Spark SQL is syntactically valid to prevent wasting resources.
-2.  **Convert to BQ SQL**: Translates the Spark SQL to BigQuery dialect using intelligent chunking.
-3.  **Validate BQ SQL**:
-    -   **Dry Run**: Confirms 100% validity regarding syntax and schema resolution using BigQuery API.
-    -   **LLM Check**: Fallback syntax check.
-4.  **Fix / Auto-Correction**: Identifies errors and regenerates corrected query.
-5.  **Execute**: Runs the valid BigQuery SQL (e.g., creating a target table).
-6.  **Verify Data**: Compares execution results against "Ground Truth" tables using row count or full content comparison.
+1.  **Validate Spark SQL**: Checks if the input Spark SQL is syntactically valid using `sqlglot`.
+2.  **Convert to BQ SQL**: Translates the Spark SQL to BigQuery dialect.
+3.  **BigQuery Dry Run**: Validates the generated SQL using BigQuery's Dry Run API for syntax and schema correctness.
+    -   *If correct*: Proceed to LLM Check.
+    -   *If error*: Trigger **Auto-Correction** loop.
+4.  **LLM Check**: Performs an additional semantic and safety check on the SQL.
+    -   *If passed*: Proceed to Execution.
+    -   *If issues found*: Trigger **Auto-Correction** loop.
+5.  **Execute**: Executes the valid BigQuery SQL (e.g., creates the target table).
+    -   *If execution fails* (runtime errors): Trigger **Auto-Correction** loop.
+6.  **Auto-Correction**: Uses LLM to fix the SQL based on error messages (from Dry Run, LLM Check, or Execution), then loops back to **Dry Run**.
+7.  **Data Verification**: Compares the execution results against ground truth tables (if verified) logic.
 
 
 ## 🚀 Installation
@@ -60,13 +56,27 @@ cp env.example .env
 ## ⚙️ Configuration
 
 ### LLM Configuration (Google Gemini / Vertex AI)
-| Variable | Description |
-|----------|-------------|
-| `GOOGLE_CLOUD_PROJECT` | GCP Project ID (Required, uses ADC) |
-| `GOOGLE_CLOUD_LOCATION` | Vertex AI Location (Required, e.g., `us-central1`) |
-| `SQL_CONVERT_MODEL` | Model for SQL conversion (e.g., `gemini-1.5-pro`) |
-| `LLM_SQL_CHECK_MODEL` | Model for SQL syntax checking |
-| `BIGQUERY_ERROR_FIX_MODEL` | Model for error fixing |
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `GOOGLE_CLOUD_PROJECT` | GCP Project ID (uses ADC if unset) | - |
+| `GOOGLE_CLOUD_LOCATION` | Vertex AI Location | `global` |
+| `SQL_CONVERT_MODEL` | Model for SQL conversion | `gemini-3-pro-preview` |
+| `LLM_SQL_CHECK_MODEL` | Model for SQL syntax checking | `gemini-3-pro-preview` |
+| `BIGQUERY_ERROR_FIX_MODEL` | Model for error fixing | `gemini-3-pro-preview` |
+
+### Engine Configuration
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SQL_CHUNKING_MODE` | Strategy for splitting large SQL (`auto`, `always`, `disabled`) | `auto` |
+| `MAX_SQL_LENGTH` | Character limit for triggering chunking | `8000` |
+| `MAX_SQL_LINES` | Line limit for triggering chunking | `200` |
+| `AUTO_FIX_MAX_RETRIES` | Max attempts to fix SQL errors | `10` |
+
+### Data Verification
+| Variable | Description | Values |
+|----------|-------------|--------|
+| `DATA_VERIFICATION_MODE` | Verification method | `row_count` or `full_content` |
+| `DATA_VERIFICATION_ALLOWED_DATASET` | Safety check for allowed target dataset | - |
 
 ### Connection Configuration
 The service uses **Application Default Credentials (ADC)** for authentication.
@@ -109,9 +119,20 @@ curl -X POST http://localhost:8000/convert \
 ```json
 {
   "success": true,
-  "spark_sql": "...",
+  "spark_sql": "SELECT date_format(dt, \"yyyy-MM-dd\") as formatted_date, collect_list(name) as names FROM my_table GROUP BY dt",
   "bigquery_sql": "SELECT FORMAT_DATE('%Y-%m-%d', dt) as formatted_date, ARRAY_AGG(name) as names FROM my_table GROUP BY dt",
+  "spark_valid": true,
   "validation_success": true,
-  "validation_mode": "dry_run"
+  "validation_mode": "dry_run",
+  "llm_check_success": true,
+  "retry_count": 0,
+  "execution_success": true,
+  "execution_target_table": "project.dataset.table",
+  "data_verification_success": true,
+  "data_verification_result": {
+    "mode": "row_count",
+    "match": true,
+    "count": 100
+  }
 }
 ```
