@@ -41,7 +41,7 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     logger.info(f"[Node: bigquery_error_fix] Previous error ({error_type}): {error_message}")
     logger.debug(f"[Node: bigquery_error_fix] SQL to fix:\n{state['bigquery_sql']}")
     
-    llm = get_llm()
+    llm = get_llm("bigquery_error_fix")
     
     # Get table mapping information
     table_mapping_service = get_table_mapping_service()

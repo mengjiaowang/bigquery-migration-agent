@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
 </head>
 <body>
     <header class="header">
@@ -36,30 +37,9 @@
                 </div>
             </div>
             <div class="panel-body">
-                <div class="status-cards" style="margin-bottom: 0;">
-                    <div class="status-card">
-                        <div class="status-card-label">Spark SQL 验证</div>
-                        <div class="status-card-value pending" id="sparkStatus">-</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="status-card-label">SQL 转换</div>
-                        <div class="status-card-value pending" id="convertStatus">-</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="status-card-label">BQ Dry Run 验证</div>
-                        <div class="status-card-value pending" id="bqStatus">-</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="status-card-label">LLM SQL 检查</div>
-                        <div class="status-card-value pending" id="llmCheckStatus">-</div>
-                        </div>
-                        <div class="status-card">
-                        <div class="status-card-label">BQ 执行结果</div>
-                        <div class="status-card-value pending" id="executionStatus">-</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="status-card-label">数据对比验证</div>
-                        <div class="status-card-value pending" id="dataVerificationStatus">-</div>
+                <div class="mermaid-container">
+                    <div class="mermaid" id="workflowGraph">
+                        <!-- Graph will be rendered here by ui.js -->
                     </div>
                 </div>
             </div>

@@ -53,8 +53,9 @@ async def lifespan(app: FastAPI):
     
     if llm_provider == "gemini":
         required_vars.append("GOOGLE_API_KEY")
-    elif llm_provider == "openai":
-        required_vars.append("OPENAI_API_KEY")
+    
+    # Vertex AI location is strictly required now
+    required_vars.append("GOOGLE_CLOUD_LOCATION")
     
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     

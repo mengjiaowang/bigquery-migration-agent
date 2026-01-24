@@ -41,7 +41,7 @@ def llm_sql_check(state: AgentState) -> dict[str, Any]:
         table_ddls=table_ddls,
     )
     
-    llm = get_llm()
+    llm = get_llm("llm_sql_check")
     response = llm.invoke(prompt)
     
     try:

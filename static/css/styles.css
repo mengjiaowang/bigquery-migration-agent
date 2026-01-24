@@ -333,21 +333,67 @@ body {
     color: var(--text-primary);
 }
 
-/* Status Cards */
-.status-cards {
+/* Mermaid Flowchart */
+.mermaid-container {
+    padding: 1rem;
+    overflow-x: auto;
     display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
+    justify-content: center;
+        background: var(--bg-tertiary);
+        border-radius: 8px;
+        min-height: 200px;
+    }
+    
+    .mermaid {
+        width: 100%;
+        text-align: center;
+    }
+    
+    /* Custom Mermaid Styles (injected mostly via mermaid config but some override here) */
+    g.node.running>rect,
+    g.node.running>circle,
+    g.node.running>polygon {
+        fill: var(--accent-yellow) !important;
+        stroke: var(--accent-yellow) !important;
+        stroke-width: 2px !important;
+        animation: pulse-node 1.5s infinite;
+    }
+    
+    g.node.success>rect,
+    g.node.success>circle,
+    g.node.success>polygon {
+        fill: var(--accent-green) !important;
+        stroke: var(--accent-green) !important;
+        color: white !important;
+    }
+    
+    g.node.error>rect,
+    g.node.error>circle,
+    g.node.error>polygon {
+        fill: var(--accent-red) !important;
+        stroke: var(--accent-red) !important;
+        color: white !important;
+    }
+    
+    g.node.pending>rect,
+    g.node.pending>circle,
+    g.node.pending>polygon {
+        fill: var(--bg-secondary) !important;
+        stroke: var(--border-color) !important;
 }
 
-.status-card {
-    flex: 1;
-    min-width: 150px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 1rem;
+@keyframes pulse-node {
+    0% {
+        filter: drop-shadow(0 0 0 rgba(210, 153, 34, 0.4));
+    }
+
+    50% {
+        filter: drop-shadow(0 0 10px rgba(210, 153, 34, 0.4));
+    }
+
+    100% {
+        filter: drop-shadow(0 0 0 rgba(210, 153, 34, 0.4));
+    }
 }
 
 .status-card-label {

@@ -28,7 +28,7 @@ def _convert_single_chunk(spark_sql: str, table_mapping_info: str, table_ddls: s
     Returns:
         The converted BigQuery SQL.
     """
-    llm = get_llm()
+    llm = get_llm("sql_convert")
     
     prompt = SPARK_TO_BIGQUERY_PROMPT.format(
         spark_sql=spark_sql,
