@@ -45,10 +45,10 @@ class TableMappingService:
             csv_path: Path to the CSV file. If not provided, uses default path.
         """
         if csv_path is None:
-            # Default path: tests/data/hive2bq.csv relative to project root
+            # Default path: tests/data/table_mapping.csv relative to project root
             csv_path = os.getenv(
                 "TABLE_MAPPING_CSV",
-                str(Path(__file__).parent.parent.parent / "data" / "hive2bq.csv")
+                str(Path(__file__).parent.parent.parent / "data" / "table_mapping.csv")
             )
         
         if not os.path.exists(csv_path):
@@ -59,8 +59,8 @@ class TableMappingService:
             with open(csv_path, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    hive_table = row.get("Hive 表名 (Original)", "").strip()
-                    bq_table = row.get("BigQuery 表名 (Mapped)", "").strip()
+                    hive_table = row.get("hive_table", "").strip()
+                    bq_table = row.get("bigquery_table", "").strip()
                     
                     if hive_table and bq_table and bq_table != "无":
                         self._mappings[hive_table.lower()] = bq_table
