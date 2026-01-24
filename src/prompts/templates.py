@@ -232,9 +232,70 @@ If the error persists or is not covered by the main rules, check these specific 
 
 LLM_SQL_CHECK_PROMPT = """
 # Role
-You are a BigQuery SQL Validator. Your task is to check if the converted BigQuery SQL follows the following rules:
+You are a BigQuery SQL Validator. Your task is to check if the converted BigQuery SQL follows the rules below.
 
-""" + SHARED_SQL_CONVERSION_RULES + """
+# Validation Strategy (Chain of Thought)
+
+**Step 1: Scan**
+Check the Spark SQL and identify ALL occurrences of:
+- `LATERAL VIEW json_tuple(json, field1, ...)`
+- `LATERAL VIEW explode(json)`
+
+**Step 2: Judge**
+For each occurrence found in Step 1, locate the corresponding BigQuery SQL and verify if the `WHERE` clause includes a filter to exclude invalid JSONs.
+The required filter is: `WHERE COALESCE(json_column,'') <> ''` (or equivalent check ensuring the JSON source is not empty/null before parsing).
+
+**Criteria:**
+- If **ALL** occurrences have the corresponding filter -> **Pass**.
+- If **ANY** occurrence is missing the filter -> **Fail**.
+  - In the error message, explicitly point out the specific section of BigQuery SQL that is missing the filter.
+
+# Conversion Rules Examples
+
+##### Example 1: convert a single LATERAL VIEW json_tuple
+
+Spark SQL: 
+```sql
+SELECT
+  field1, field2, field3
+FROM table t 
+LATERAL VIEW json_tuple(data, 'field1', 'field2', 'field3') jt as field1, field2, field3
+```
+
+The BigQuery SQL:
+```sql
+SELECT
+  *,
+  COALESCE(JSON_VALUE(data, '$.field1'), CAST(JSON_EXTRACT(data, '$.field1') AS STRING)) as field1
+  COALESCE(JSON_VALUE(data, '$.field2'), CAST(JSON_EXTRACT(data, '$.field2') AS STRING)) as field2
+  COALESCE(JSON_VALUE(data, '$.field3'), CAST(JSON_EXTRACT(data, '$.field3') AS STRING)) as field3
+FROM table t
+WHERE COALESCE(data,'') <> '' -- You have to apply this filter to ensure strict row-count parity with Spark’s inner-join behavior         
+```
+
+##### Example 2: convert LATERAL VIEW OUTER EXPLODE followed by LATERAL VIEW json_tuple
+
+Spark SQL: 
+
+```sql
+SELECT
+  field1, field2, field3
+FROM table t 
+LATERAL VIEW OUTER EXPLODE(udf.json_split(t.json_obj_list)) as json_data
+LATERAL VIEW json_tuple(json_data, 'field1', 'field2', 'field3') jt AS  field1, field2, field3
+```
+
+The BigQuery SQL:
+
+```sql
+SELECT
+  COALESCE(JSON_VALUE(t_base.json_value, '$.field1'), CAST(JSON_EXTRACT(t_base.json_value, '$.field1') AS STRING)) as field1,
+  COALESCE(JSON_VALUE(t_base.json_value, '$.field2'), CAST(JSON_EXTRACT(t_base.json_value, '$.field2') AS STRING)) as field2,
+  COALESCE(JSON_VALUE(t_base.json_value, '$.field3'), CAST(JSON_EXTRACT(t_base.json_value, '$.field3') AS STRING)) as field3
+FROM table t 
+LEFT JOIN UNNEST(JSON_QUERY_ARRAY(t.json_obj_list)) as json_data
+WHERE COALESCE(json_data,'') <> '' -- You have to apply this filter to ensure strict row-count parity with Spark’s inner-join behavior  
+```
 
 ## Context Data
 ### 1. Original Spark SQL:
@@ -246,9 +307,6 @@ You are a BigQuery SQL Validator. Your task is to check if the converted BigQuer
 ```sql
 {bigquery_sql}
 ```
-
-### 3. Target Table DDLs:
-{table_ddls}
 
 ---
 
