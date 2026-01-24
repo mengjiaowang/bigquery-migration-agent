@@ -9,11 +9,10 @@ from src.services.llm import get_llm
 from src.services.table_mapping import get_table_mapping_service
 from src.services.utils import get_content_text
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 
-def fix_node(state: AgentState) -> dict[str, Any]:
+def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     """Fix BigQuery SQL based on validation error.
     
     Args:
@@ -24,27 +23,30 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     """
     retry_count = state["retry_count"] + 1
     
-    # Determine which error to fix
-    # If validation passed but we are here, it must be an execution error
+    retry_count = state["retry_count"] + 1
+    
+    # Check for execution error first, then LLM check error, then validation error
     if state.get("validation_success") and state.get("execution_error"):
         error_message = state["execution_error"]
         error_type = "execution"
+    elif state.get("llm_check_error"): # Handle LLM check error
+        error_message = state["llm_check_error"]
+        error_type = "llm_check"
     else:
         error_message = state.get("validation_error")
         error_type = "validation"
     
     logger.info("=" * 60)
-    logger.info(f"[Node: fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "fix", "status": "loading", "attempt": retry_count})
-    logger.info(f"[Node: fix] Previous error ({error_type}): {error_message}")
-    logger.debug(f"[Node: fix] SQL to fix:\n{state['bigquery_sql']}")
+    logger.info(f"[Node: bigquery_error_fix] Starting SQL fix (retry {retry_count})", extra={"type": "status", "step": "bigquery_error_fix", "status": "loading", "attempt": retry_count})
+
+    logger.debug(f"[Node: bigquery_error_fix] SQL to fix:\n{state['bigquery_sql']}")
     
-    llm = get_llm()
+    llm = get_llm("bigquery_error_fix")
     
     # Get table mapping information
     table_mapping_service = get_table_mapping_service()
-    table_mapping_info = table_mapping_service.get_mapping_info_for_prompt()
     
-    # Format conversion history for the prompt
+    # Format conversion history
     history_str = ""
     for entry in state.get("conversion_history", []):
         history_str += f"\nAttempt {entry.attempt}:\n"
@@ -65,18 +67,19 @@ def fix_node(state: AgentState) -> dict[str, Any]:
     
     response = llm.invoke(prompt)
     
-    # Clean up response - remove markdown code blocks if present
+    # Remove markdown code blocks
     fixed_sql = get_content_text(response.content).strip()
     if fixed_sql.startswith("```"):
         lines = fixed_sql.split("\n")
         fixed_sql = "\n".join(lines[1:-1]).strip()
     
-    # Apply table name replacement as a safety net
-    # (in case the LLM didn't apply all mappings correctly)
+    # Apply table name mapping
     fixed_sql = table_mapping_service.replace_table_names(fixed_sql)
     
-    logger.debug(f"[Node: fix] Fixed BigQuery SQL:\n{fixed_sql}")
+    logger.debug(f"[Node: bigquery_error_fix] Fixed BigQuery SQL:\n{fixed_sql}")
     
+    logger.info(f"[Node: bigquery_error_fix] SQL fixed successfully", extra={"type": "status", "step": "bigquery_error_fix", "status": "success"})
+
     return {
         "bigquery_sql": fixed_sql,
         "retry_count": retry_count,

@@ -43,46 +43,43 @@ class SQLChunker:
         
         logger.info(f"[Chunker] Analyzing SQL: {len(sql)} chars, {sql.count(chr(10))} lines")
         
-        # 1. 检测多语句（分号分隔）
+        # 1. Detect multiple statements
         if self._has_multiple_statements(sql):
             logger.info("[Chunker] Detected multiple statements")
             return self._chunk_by_statements(sql)
         
-        # 2. 检测 INSERT OVERWRITE + SELECT
+        # 2. Detect INSERT...SELECT pattern
         if self._is_insert_select(sql):
             logger.info("[Chunker] Detected INSERT...SELECT pattern")
             return self._chunk_insert_select(sql)
         
-        # 3. 检测 ALTER VIEW
+        # 3. Detect ALTER VIEW
         if self._is_alter_view(sql):
             logger.info("[Chunker] Detected ALTER VIEW")
             return self._chunk_alter_view(sql)
         
-        # 4. 检测 WITH (CTE) 语句
+        # 4. Detect CTE (WITH clause)
         if self._has_cte(sql):
             logger.info("[Chunker] Detected CTE (WITH clause)")
             return self._chunk_by_cte(sql)
         
-        # 5. 检测 UNION/UNION ALL
+        # 5. Detect UNION
         if self._has_union(sql):
             logger.info("[Chunker] Detected UNION")
             return self._chunk_by_union(sql)
         
-        # 6. 无法分块，返回整体
+        # 6. No chunking pattern detected
         logger.info("[Chunker] No chunking pattern detected, returning as single chunk")
         return [SQLChunk(chunk_type='main', content=sql, index=0)]
     
     def _has_multiple_statements(self, sql: str) -> bool:
         """Check if SQL contains multiple statements."""
-        # 去掉字符串内容后检查分号
         clean = self._remove_string_literals(sql)
-        # 检查是否有多个有效语句
         statements = [s.strip() for s in clean.split(';') if s.strip()]
         return len(statements) > 1
     
     def _remove_string_literals(self, sql: str) -> str:
         """Remove string literals from SQL for pattern matching."""
-        # 简单替换单引号和双引号字符串
         result = re.sub(r"'[^']*'", "''", sql)
         result = re.sub(r'"[^"]*"', '""', result)
         return result
@@ -91,7 +88,6 @@ class SQLChunker:
         """Split by semicolons (multiple statements)."""
         chunks = []
         
-        # 智能分割，处理字符串中的分号
         statements = self._split_by_semicolon(sql)
         
         for i, stmt in enumerate(statements):
@@ -129,7 +125,7 @@ class SQLChunker:
             else:
                 current.append(char)
         
-        # 最后一个语句
+        # Last statement
         stmt = ''.join(current).strip()
         if stmt:
             statements.append(stmt)
@@ -168,7 +164,7 @@ class SQLChunker:
         """Split INSERT ... SELECT into parts."""
         chunks = []
         
-        # 提取 INSERT 部分和 SELECT 部分
+        # Extract INSERT and SELECT parts
         match = re.match(
             r'(INSERT\s+(?:OVERWRITE\s+)?(?:INTO\s+)?TABLE\s+\S+)\s+((?:WITH|SELECT).*)',
             sql, 
@@ -179,14 +175,14 @@ class SQLChunker:
             insert_part = match.group(1)
             select_part = match.group(2)
             
-            # INSERT 部分
+            # INSERT part
             chunks.append(SQLChunk(
                 chunk_type='insert_header',
                 content=insert_part,
                 index=0
             ))
             
-            # SELECT 部分（可能还包含 CTE）
+            # SELECT part (may contain CTE)
             if self._has_cte(select_part):
                 cte_chunks = self._chunk_by_cte(select_part)
                 for i, chunk in enumerate(cte_chunks):
@@ -249,15 +245,14 @@ class SQLChunker:
         """Split SQL by CTE definitions."""
         chunks = []
         
-        # 找到 WITH 之后的内容
+        # Find content after WITH
         match = re.match(r'\s*WITH\s+(.*)', sql, re.IGNORECASE | re.DOTALL)
         if not match:
             return [SQLChunk(chunk_type='main', content=sql, index=0)]
         
         after_with = match.group(1)
         
-        # 解析 CTE 块
-        cte_blocks, main_query = self._parse_cte_and_main(after_with)
+        # Parse CTE blocks
         
         for i, (name, definition) in enumerate(cte_blocks):
             chunks.append(SQLChunk(
@@ -267,7 +262,7 @@ class SQLChunker:
                 index=i
             ))
         
-        # 主查询
+        # Main query
         if main_query:
             chunks.append(SQLChunk(
                 chunk_type='main',
@@ -284,7 +279,7 @@ class SQLChunker:
         remaining = sql
         
         while True:
-            # 匹配 CTE: name AS (...)
+            # Match CTE: name AS (...)
             match = re.match(r'\s*(\w+)\s+AS\s*\(', remaining, re.IGNORECASE)
             if not match:
                 break
@@ -292,7 +287,7 @@ class SQLChunker:
             name = match.group(1)
             start_paren = match.end() - 1
             
-            # 找到匹配的右括号
+            # Find matching closing parenthesis
             end_paren = self._find_matching_paren(remaining, start_paren)
             if end_paren < 0:
                 break
@@ -300,16 +295,16 @@ class SQLChunker:
             definition = remaining[start_paren:end_paren + 1]
             cte_blocks.append((name, definition))
             
-            # 移动到下一个位置
+            # Move to next position
             remaining = remaining[end_paren + 1:].strip()
             
-            # 检查是否有逗号（更多 CTE）
+            # Check for comma (more CTEs)
             if remaining.startswith(','):
                 remaining = remaining[1:].strip()
             else:
                 break
         
-        # 剩余部分是主查询
+        # Remaining part is main query
         main_query = remaining.strip()
         
         return cte_blocks, main_query
@@ -323,7 +318,7 @@ class SQLChunker:
         for i in range(start, len(sql)):
             char = sql[i]
             
-            # 处理字符串
+            # Handle string literals
             if char in ("'", '"') and (i == 0 or sql[i-1] != '\\'):
                 if not in_string:
                     in_string = True
@@ -346,7 +341,7 @@ class SQLChunker:
     
     def _has_union(self, sql: str) -> bool:
         """Check if SQL has UNION (outside of subqueries)."""
-        # 简单检测：去掉括号内的内容后检查 UNION
+        # Simple check: remove parentheses content then check UNION
         clean = self._remove_parentheses_content(sql)
         return bool(re.search(r'\bUNION\s+(?:ALL\s+)?', clean, re.IGNORECASE))
     
@@ -383,13 +378,13 @@ class SQLChunker:
         """Split SQL by UNION/UNION ALL at top level."""
         chunks = []
         
-        # 找到顶层的 UNION 位置
+        # Find top-level UNION positions
         union_positions = self._find_top_level_unions(sql)
         
         if not union_positions:
             return [SQLChunk(chunk_type='main', content=sql, index=0)]
         
-        # 分割
+        # Split
         prev_end = 0
         for i, (start, end, union_type) in enumerate(union_positions):
             part = sql[prev_end:start].strip()
@@ -402,7 +397,7 @@ class SQLChunker:
                 ))
             prev_end = end
         
-        # 最后一部分
+        # Last part
         last_part = sql[prev_end:].strip()
         if last_part:
             chunks.append(SQLChunk(
@@ -444,7 +439,7 @@ class SQLChunker:
             elif char == ')':
                 depth -= 1
             elif depth == 0:
-                # 检查 UNION
+                # Check UNION
                 remaining = sql[i:].upper()
                 if remaining.startswith('UNION ALL'):
                     positions.append((i, i + 10, 'UNION ALL'))
@@ -479,17 +474,17 @@ class ChunkedConverter:
                        (f" ({chunk.name})" if chunk.name else ""))
             
             if chunk.chunk_type == 'insert_header':
-                # INSERT 头部转换为 CREATE OR REPLACE
+                # Convert INSERT header
                 converted = self._convert_insert_header(chunk.content)
             elif chunk.chunk_type == 'alter_view_header':
-                # ALTER VIEW 头部转换为 CREATE OR REPLACE VIEW
+                # Convert ALTER VIEW header
                 converted = self._convert_alter_view_header(chunk.content)
             elif chunk.chunk_type == 'use':
-                # USE 语句跳过（BigQuery 不需要）
+                # Skip USE statement
                 logger.info(f"[ChunkedConverter] Skipping USE statement")
                 continue
             else:
-                # 正常转换
+                # Normal conversion
                 converted = self.converter_func(chunk.content)
             
             converted_parts.append({
@@ -499,7 +494,7 @@ class ChunkedConverter:
                 'index': chunk.index
             })
         
-        # 合并结果
+        # Merge results
         return self._merge_parts(converted_parts)
     
     def _convert_insert_header(self, insert_sql: str) -> str:
@@ -512,7 +507,7 @@ class ChunkedConverter:
         )
         if match:
             table_name = match.group(1)
-            # 移除可能存在的反引号
+            # Remove backticks
             table_name = table_name.strip('`')
             return f"CREATE OR REPLACE TABLE `{table_name}` AS"
         return insert_sql
@@ -539,7 +534,7 @@ class ChunkedConverter:
         if len(parts) == 1:
             return parts[0]['content']
         
-        # 按 index 排序
+        # Sort by index
         parts = sorted(parts, key=lambda x: x['index'])
         
         result_parts = []
@@ -553,7 +548,7 @@ class ChunkedConverter:
             if ptype == 'cte':
                 cte_parts.append((part['name'], content))
             elif ptype in ('insert_header', 'alter_view_header'):
-                # 放在最前面
+                # Place at the beginning
                 result_parts.insert(0, content)
             elif ptype in ('main', 'select', 'cte_query'):
                 main_parts.append(content)
@@ -562,12 +557,12 @@ class ChunkedConverter:
             elif ptype == 'union_part':
                 main_parts.append(content)
             elif ptype == 'statement':
-                # 独立语句，用分号分隔
+                # Standalone statement
                 main_parts.append(content + ';')
             else:
                 main_parts.append(content)
         
-        # 构建 CTE 部分
+        # Build CTE part
         if cte_parts:
             cte_strs = []
             for i, (name, definition) in enumerate(cte_parts):
@@ -577,9 +572,9 @@ class ChunkedConverter:
                     cte_strs.append(f", {name} AS {definition}")
             result_parts.append('\n'.join(cte_strs))
         
-        # 添加主查询部分
+        # Add main query part
         if main_parts:
-            # 检查是否需要用 UNION 连接
+            # Check if UNION is needed
             has_union = any(p['type'].startswith('union') for p in parts)
             if has_union:
                 result_parts.append('\nUNION ALL\n'.join(main_parts))
@@ -612,6 +607,6 @@ def chunk_and_convert(sql: str, converter_func: Callable[[str], str]) -> tuple[s
             result = converter.convert_chunks(chunks)
             return result, True
     
-    # 不需要分块或无法分块
+    # No chunking needed
     logger.info("[chunk_and_convert] Converting as single chunk")
     return converter_func(sql), False

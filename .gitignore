@@ -3,3 +3,6 @@ venv
 .DS_Store
 .env
 *.pyc
+data/*
+.pytest_cache
+.agent

@@ -5,43 +5,19 @@ import * as UI from './ui.js';
 let isConverting = false;
 let lastConversionResult = null;
 
-const SAMPLE_SQL = `CREATE OR REPLACE TABLE original_target_table
-AS
-WITH
-  ExperimentCounts AS (
-    SELECT
-      experiment_id,
-      experiment_variant_id,
-      COUNT(DISTINCT user_pseudo_id) AS user_count,
-      SUM(COUNT(DISTINCT user_pseudo_id))
-        OVER (PARTITION BY experiment_id) AS total_users_in_experiment
-    FROM
-      abtest
-    GROUP BY
-      experiment_id,
-      experiment_variant_id
-  ),
-  ExpectedCounts AS (
-    SELECT
-      experiment_id,
-      experiment_variant_id,
-      user_count,
-      total_users_in_experiment,
-      total_users_in_experiment / SUM(total_users_in_experiment)
-        OVER () AS expected_proportion,
-      SUM(user_count) OVER () AS total_users_overall
-    FROM
-      ExperimentCounts
-  )
-SELECT
-  experiment_id,
-  experiment_variant_id,
-  user_count,
-  total_users_in_experiment,
-  expected_proportion,
-  total_users_overall
+const SAMPLE_SQL = `SELECT
+  term,
+  refresh_date,
+  rank
 FROM
-  ExpectedCounts`;
+  google_trends_top_terms
+WHERE
+  rank <= 10
+  AND refresh_date >= '2024-01-01'
+ORDER BY
+  refresh_date DESC, 
+  rank ASC
+LIMIT 100`;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -110,7 +86,7 @@ async function handleConvert() {
 
     const sparkSql = document.getElementById('sparkSql').value.trim();
     if (!sparkSql) {
-        UI.addLog('warning', '请输入 Spark SQL');
+        UI.addLog('warning', 'Please enter Spark SQL');
         return;
     }
 
@@ -119,16 +95,16 @@ async function handleConvert() {
     const btnText = document.getElementById('convertBtnText');
     
     btn.disabled = true;
-    btnText.innerHTML = '<div class="spinner"></div> 转换中...';
+    btnText.innerHTML = '<div class="spinner"></div> Converting...';
     UI.resetStatusCards();
-    UI.updateStatus('loading', '正在转换...');
+    UI.updateStatus('loading', 'Converting...');
 
     try {
         const startTime = Date.now();
         const result = await convertSql(sparkSql);
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-        UI.addLog('info', `转换完成，耗时 ${duration}s`);
+        UI.addLog('info', `Conversion completed, duration ${duration}s`);
         
         lastConversionResult = {
             ...result,
@@ -146,33 +122,33 @@ async function handleConvert() {
         }
 
         if (result.validation_success) {
-            UI.updateStatus('success', '转换成功');
+            UI.updateStatus('success', 'Conversion Successful');
         } else {
-            UI.updateStatus('error', '验证失败');
+            UI.updateStatus('error', 'Validation Failed');
         }
 
         if (result.success) {
-            UI.addLog('success', '🎉 转换完全成功!');
+            UI.addLog('success', '🎉 Conversion Fully Successful!');
         }
         
         if (result.execution_success) {
-            let msg = '🚀 SQL 执行成功';
+            let msg = '🚀 SQL Execution Successful';
             if (result.execution_target_table) {
-                msg += ` | 目标表: ${result.execution_target_table}`;
+                msg += ` | Target Table: ${result.execution_target_table}`;
             }
             UI.addLog('success', msg);
         } else if (result.execution_error) {
-            UI.addLog('error', `SQL 执行失败: ${result.execution_error}`);
+            UI.addLog('error', `SQL Execution Failed: ${result.execution_error}`);
         }
 
     } catch (error) {
         console.error('Conversion failed:', error);
-        UI.addLog('error', `请求失败: ${error.message}`);
-        UI.updateStatus('error', '请求失败');
+        UI.addLog('error', `Request Failed: ${error.message}`);
+        UI.updateStatus('error', 'Request Failed');
     } finally {
         isConverting = false;
         btn.disabled = false;
-        btnText.textContent = '开始转换';
+        btnText.textContent = 'Start Conversion';
     }
 }
 
@@ -188,5 +164,5 @@ function saveResult() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    UI.addLog('info', '结果已保存');
+    UI.addLog('info', 'Result saved');
 }

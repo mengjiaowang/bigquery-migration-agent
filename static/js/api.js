@@ -12,6 +12,7 @@ export function connectLogStream(onMessage, onOpen, onError) {
     eventSource.onmessage = (event) => {
         try {
             const logEntry = JSON.parse(event.data);
+            console.log("SSE Received:", logEntry); // Debug log
             if (onMessage) onMessage(logEntry);
         } catch (e) {
             console.error('Failed to parse log entry:', e);

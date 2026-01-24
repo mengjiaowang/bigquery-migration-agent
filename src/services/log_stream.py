@@ -6,8 +6,7 @@ from collections import deque
 from datetime import datetime
 from typing import AsyncGenerator, Optional
 
-# Global log buffer and subscribers
-_log_buffer: deque = deque(maxlen=100)  # Keep last 100 logs
+_log_buffer: deque = deque(maxlen=100)
 _subscribers: list[asyncio.Queue] = []
 _loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -18,7 +17,6 @@ class StreamingLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         """Emit a log record to all subscribers."""
         try:
-            # Extract extra fields if present
             extra = record.__dict__
             
             log_entry = {
@@ -29,7 +27,7 @@ class StreamingLogHandler(logging.Handler):
                 "type": extra.get("type", "log"),  # default to "log"
             }
             
-            # Add optional status fields if present
+
             if log_entry["type"] == "status":
                 if "step" in extra:
                     log_entry["step"] = extra["step"]
@@ -40,7 +38,6 @@ class StreamingLogHandler(logging.Handler):
                 if "data" in extra:
                     log_entry["data"] = extra["data"]
             
-            # Add to buffer
             _log_buffer.append(log_entry)
             
             # Send to all subscribers
@@ -55,10 +52,14 @@ class StreamingLogHandler(logging.Handler):
                             queue.put_nowait(log_entry)
                         except asyncio.QueueFull:
                             pass
-                except Exception:
-                    pass  # Ignore errors during emit
+                except Exception as e:
+                    import sys
+                    print(f"Error in emit to subscriber: {e}", file=sys.stderr)
+                    pass
                     
-        except Exception:
+        except Exception as e:
+            import sys
+            print(f"Error in emit: {e}", file=sys.stderr)
             self.handleError(record)
 
 
@@ -87,6 +88,8 @@ def setup_log_streaming() -> None:
     # Add to root logger
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
+    
+
 
 
 async def subscribe_logs() -> AsyncGenerator[dict, None]:

@@ -1,127 +1,65 @@
-"""LLM service with configurable provider support."""
+"""LLM service with configurable provider support (Vertex AI only)."""
 
 import logging
 import os
-from enum import Enum
-from typing import Union
+from typing import Optional
 
 import google.auth
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
 
-class LLMProvider(str, Enum):
-    """Supported LLM providers."""
+def get_model_name(node_name: Optional[str] = None) -> str:
+    """Get the model name for a specific node.
     
-    GEMINI = "gemini"
-    OPENAI = "openai"
+    Args:
+        node_name: Name of the node. Required for model resolution.
+        
+    Returns:
+        Model name string.
+    """
+    # 1. Check {NODE_NAME}_MODEL
+    if node_name:
+        node_model = os.getenv(f"{node_name.upper()}_MODEL")
+        if node_model:
+            return node_model
+    else:
+        raise ValueError("node_name is required to determine the model configuration.")
+
+    raise ValueError(
+        f"No LLM model configured for node '{node_name}'. "
+        f"Please set {node_name.upper()}_MODEL in environment variables. "
+    )
 
 
-def get_llm_provider() -> LLMProvider:
-    """Get the configured LLM provider from environment.
+def get_llm(node_name: Optional[str] = None) -> BaseChatModel:
+    """Get LLM instance based on configuration for the specific node.
+    
+    Args:
+        node_name: Optional name of the node requesting the LLM.
+                   Common values: 'sql_convert', 'llm_sql_check', 'bigquery_error_fix'.
     
     Returns:
-        LLMProvider enum value.
-        
-    Raises:
-        ValueError: If provider is not supported.
+        BaseChatModel instance (always Vertex AI).
     """
-    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    model = get_model_name(node_name)
     
-    try:
-        return LLMProvider(provider)
-    except ValueError:
-        supported = ", ".join([p.value for p in LLMProvider])
-        raise ValueError(
-            f"Unsupported LLM provider: {provider}. "
-            f"Supported providers: {supported}"
-        )
-
-
-def get_gemini_llm() -> ChatGoogleGenerativeAI:
-    """Get Google Gemini LLM instance via Vertex AI.
-    
-    Uses Application Default Credentials (ADC) for authentication.
-    Run 'gcloud auth application-default login' to set up local credentials.
-    
-    Returns:
-        ChatGoogleGenerativeAI instance.
-        
-    Raises:
-        ValueError: If project ID cannot be determined.
-    """
-    # Get credentials and project ID using ADC
     credentials, auth_project_id = google.auth.default()
-    
-    # Priority: env var > credentials project
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or auth_project_id
+    location = os.getenv("GOOGLE_CLOUD_LOCATION")
+    
     if not project_id:
-        raise ValueError(
-            "Google Cloud project ID is required. Set GOOGLE_CLOUD_PROJECT "
-            "environment variable or configure default project in gcloud."
-        )
-    
-    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    
-    logger.info(f"[LLM] Using Vertex AI - Project: {project_id}, Location: {location}, Model: {model}")
+        raise ValueError("Google Cloud project ID is required for Vertex AI.")
+    if not location:
+        raise ValueError("GOOGLE_CLOUD_LOCATION environment variable is required.")
+        
+    logger.info(f"[LLM] Request for node '{node_name}' -> Model: {model} (Vertex AI), Project: {project_id}, Location: {location}")
     
     return ChatGoogleGenerativeAI(
         model=model,
         project=project_id,
         location=location,
         temperature=0.1,
-        vertexai=True,
     )
-
-
-def get_openai_llm() -> ChatOpenAI:
-    """Get OpenAI LLM instance.
-    
-    Returns:
-        ChatOpenAI instance.
-        
-    Raises:
-        ValueError: If OPENAI_API_KEY is not set.
-    """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError(
-            "OPENAI_API_KEY environment variable is required for OpenAI provider"
-        )
-    
-    model = os.getenv("OPENAI_MODEL", "gpt-4o")
-    base_url = os.getenv("OPENAI_API_BASE")  # Optional: for third-party OpenAI-compatible APIs
-    
-    kwargs = {
-        "model": model,
-        "api_key": api_key,
-        "temperature": 0.1,
-    }
-    
-    if base_url:
-        kwargs["base_url"] = base_url
-    
-    return ChatOpenAI(**kwargs)
-
-
-def get_llm() -> BaseChatModel:
-    """Get LLM instance based on configured provider.
-    
-    Returns:
-        BaseChatModel instance (either Gemini or OpenAI).
-        
-    Raises:
-        ValueError: If provider is not supported or required API key is missing.
-    """
-    provider = get_llm_provider()
-    
-    if provider == LLMProvider.GEMINI:
-        return get_gemini_llm()
-    elif provider == LLMProvider.OPENAI:
-        return get_openai_llm()
-    else:
-        raise ValueError(f"Unsupported LLM provider: {provider}")

@@ -333,21 +333,61 @@ body {
     color: var(--text-primary);
 }
 
-/* Status Cards */
-.status-cards {
+/* Mermaid Flowchart */
+.mermaid-container {
+    padding: 1rem;
+    overflow-x: auto;
     display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
+    justify-content: center;
+        background: var(--bg-tertiary);
+        border-radius: 8px;
+        min-height: 200px;
+    }
+    
+    .mermaid {
+        width: 100%;
+        text-align: center;
+    }
+    
+    /* Custom Mermaid Styles (injected mostly via mermaid config but some override here) */
+    g.node.running>rect,
+    g.node.running>circle,
+    g.node.running>polygon {
+        fill: var(--bg-secondary) !important;
+            stroke: var(--accent-green) !important;
+        stroke-width: 3px !important;
+            stroke-dasharray: 8 4;
+            animation: neon-flow 20s linear infinite !important;
+            filter: drop-shadow(0 0 5px var(--accent-green));
+    }
+    
+    g.node.success>rect,
+    g.node.success>circle,
+    g.node.success>polygon {
+        fill: var(--accent-green) !important;
+        stroke: var(--accent-green) !important;
+        color: white !important;
+    }
+    
+    g.node.error>rect,
+    g.node.error>circle,
+    g.node.error>polygon {
+        fill: var(--accent-red) !important;
+        stroke: var(--accent-red) !important;
+        color: white !important;
+    }
+    
+    g.node.pending>rect,
+    g.node.pending>circle,
+    g.node.pending>polygon {
+        fill: var(--bg-secondary) !important;
+        stroke: var(--border-color) !important;
 }
 
-.status-card {
-    flex: 1;
-    min-width: 150px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 1rem;
+@keyframes neon-flow {
+    to {
+        stroke-dashoffset: -100;
+    }
 }
 
 .status-card-label {

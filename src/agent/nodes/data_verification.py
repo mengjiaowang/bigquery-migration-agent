@@ -8,18 +8,16 @@ from typing import Any, Dict, Optional
 from src.agent.state import AgentState
 from src.services.bigquery import BigQueryService
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 
 def load_verification_mapping() -> Dict[str, str]:
     """Load verification mapping from CSV file."""
     mapping = {}
-    # Assuming the script runs from the project root
-    csv_path = os.path.join(os.getcwd(), "tests/data/data_verify.csv")
+    csv_path = os.path.join(os.getcwd(), "data/data_verify.csv")
     
     if not os.path.exists(csv_path):
-        logger.warning(f"[Node: verify] Mapping file not found at {csv_path}")
+        logger.warning(f"[Node: data_verification] Mapping file not found at {csv_path}")
         return mapping
         
     try:
@@ -29,11 +27,11 @@ def load_verification_mapping() -> Dict[str, str]:
                 if row.get("new_table") and row.get("ground_truth_table"):
                     mapping[row["new_table"].strip()] = row["ground_truth_table"].strip()
     except Exception as e:
-        logger.error(f"[Node: verify] Failed to load mapping file: {e}")
+        logger.error(f"[Node: data_verification] Failed to load mapping file: {e}")
         
     return mapping
 
-def data_verification_node(state: AgentState) -> dict[str, Any]:
+def data_verification(state: AgentState) -> dict[str, Any]:
     """Verify data in the target table after execution.
     
     Args:
@@ -43,11 +41,11 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
         State update with verification results.
     """
     logger.info("============================================================")
-    logger.info("[Node: verify] Starting Data Verification", extra={"type": "status", "step": "data_verification", "status": "loading"})
+    logger.info("[Node: data_verification] Starting Data Verification", extra={"type": "status", "step": "data_verification", "status": "loading"})
     
     target_table = state.get("execution_target_table")
     if not target_table:
-        logger.warning("[Node: verify] No target table to verify. Skipping.")
+        logger.warning("[Node: data_verification] No target table to verify. Skipping.")
         return {
             "data_verification_success": False,
             "data_verification_error": "No target table found.",
@@ -60,10 +58,9 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
     
     try:
         if ground_truth_table:
-            logger.info(f"[Node: verify] Found ground truth table: {ground_truth_table}. Mode: {verification_mode}")
+            logger.info(f"[Node: data_verification] Found ground truth table: {ground_truth_table}. Mode: {verification_mode}")
             
             if verification_mode == "full_content":
-                # Full content verification using EXCEPT DISTINCT
                 # Check (T1 - T2) U (T2 - T1) is empty
                 check_sql = f"""
                     SELECT count(*) as diff_count FROM (
@@ -72,13 +69,13 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                         (SELECT * FROM `{ground_truth_table}` EXCEPT DISTINCT SELECT * FROM `{target_table}`)
                     )
                 """
-                logger.debug(f"[Node: verify] Running full content check: {check_sql}")
+                logger.debug(f"[Node: data_verification] Running full content check: {check_sql}")
                 result = bq_service.execute_query(check_sql)
                 
                 if result.success and isinstance(result.result, list) and len(result.result) > 0:
                     diff_count = result.result[0].get("diff_count", 0)
                     if diff_count == 0:
-                        logger.info(f"[Node: verify] ✓ Full content verification successful. Tables are identical.", extra={"type": "status", "step": "data_verification", "status": "success"})
+                        logger.info(f"[Node: data_verification] ✓ Full content verification successful. Tables are identical.", extra={"type": "status", "step": "data_verification", "status": "success"})
                         return {
                             "data_verification_success": True,
                             "data_verification_result": {"mode": "full_content", "match": True},
@@ -86,7 +83,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                         }
                     else:
                         msg = f"Tables differ by {diff_count} rows."
-                        logger.error(f"[Node: verify] ✗ Full content verification failed: {msg}", extra={"type": "status", "step": "data_verification", "status": "error"})
+                        logger.error(f"[Node: data_verification] ✗ Full content verification failed: {msg}", extra={"type": "status", "step": "data_verification", "status": "error"})
                         return {
                             "data_verification_success": False,
                             "data_verification_result": {"mode": "full_content", "match": False, "diff_count": diff_count},
@@ -94,20 +91,19 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                         }
                 else:
                     error_msg = result.error_message or "Failed to run full content check"
-                    logger.error(f"[Node: verify] ✗ Verification failed: {error_msg}")
+                    logger.error(f"[Node: data_verification] ✗ Verification failed: {error_msg}")
                     return {
                         "data_verification_success": False,
                         "data_verification_error": error_msg,
                     }
 
             else:
-                # Row count verification (Default)
                 check_sql = f"""
                     SELECT 
                         (SELECT count(*) FROM `{target_table}`) as target_cnt,
                         (SELECT count(*) FROM `{ground_truth_table}`) as gt_cnt
                 """
-                logger.debug(f"[Node: verify] Running row count comparison: {check_sql}")
+                logger.debug(f"[Node: data_verification] Running row count comparison: {check_sql}")
                 result = bq_service.execute_query(check_sql)
                 
                 if result.success and isinstance(result.result, list) and len(result.result) > 0:
@@ -115,7 +111,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                     gt_cnt = result.result[0].get("gt_cnt", 0)
                     
                     if target_cnt == gt_cnt:
-                        logger.info(f"[Node: verify] ✓ Row count verification successful. Count: {target_cnt}", extra={"type": "status", "step": "data_verification", "status": "success"})
+                        logger.info(f"[Node: data_verification] ✓ Row count verification successful. Count: {target_cnt}", extra={"type": "status", "step": "data_verification", "status": "success"})
                         return {
                             "data_verification_success": True,
                             "data_verification_result": {"mode": "row_count", "match": True, "count": target_cnt},
@@ -123,7 +119,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                         }
                     else:
                         msg = f"Row count mismatch. Target: {target_cnt}, Ground Truth: {gt_cnt}"
-                        logger.error(f"[Node: verify] ✗ Row count verification failed: {msg}", extra={"type": "status", "step": "data_verification", "status": "error"})
+                        logger.error(f"[Node: data_verification] ✗ Row count verification failed: {msg}", extra={"type": "status", "step": "data_verification", "status": "error"})
                         return {
                             "data_verification_success": False,
                             "data_verification_result": {"mode": "row_count", "match": False, "target_count": target_cnt, "gt_count": gt_cnt},
@@ -131,23 +127,22 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                         }
                 else:
                      error_msg = result.error_message or "Failed to run row count check"
-                     logger.error(f"[Node: verify] ✗ Verification failed: {error_msg}")
+                     logger.error(f"[Node: data_verification] ✗ Verification failed: {error_msg}")
                      return {
                          "data_verification_success": False,
                         "data_verification_error": error_msg,
                      }
 
         else:
-            # Fallback to simple existence check if no mapping found
-            logger.info("[Node: verify] No ground truth mapping found. Running simple existence check.")
+            logger.info("[Node: data_verification] No ground truth mapping found. Running simple existence check.")
             check_sql = f"SELECT count(*) as cnt FROM `{target_table}`"
-            logger.debug(f"[Node: verify] Running check: {check_sql}")
+            logger.debug(f"[Node: data_verification] Running check: {check_sql}")
             
             result = bq_service.execute_query(check_sql)
             
             if result.success and isinstance(result.result, list) and len(result.result) > 0:
                 count = result.result[0].get("cnt", 0)
-                logger.info(f"[Node: verify] ✓ Verification successful. Row count: {count}", extra={"type": "status", "step": "data_verification", "status": "success"})
+                logger.info(f"[Node: data_verification] ✓ Verification successful. Row count: {count}", extra={"type": "status", "step": "data_verification", "status": "success"})
                 return {
                     "data_verification_success": True,
                     "data_verification_result": {"row_count": count},
@@ -155,7 +150,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                 }
             else:
                 error_msg = result.error_message or "Failed to get row count"
-                logger.error(f"[Node: verify] ✗ Verification failed: {error_msg}", extra={"type": "status", "step": "data_verification", "status": "error"})
+                logger.error(f"[Node: data_verification] ✗ Verification failed: {error_msg}", extra={"type": "status", "step": "data_verification", "status": "error"})
                 return {
                     "data_verification_success": False,
                     "data_verification_result": None,
@@ -163,7 +158,7 @@ def data_verification_node(state: AgentState) -> dict[str, Any]:
                 }
             
     except Exception as e:
-        logger.error(f"[Node: verify] ✗ Verification error: {str(e)}")
+        logger.error(f"[Node: data_verification] ✗ Verification error: {str(e)}")
         return {
             "data_verification_success": False,
             "data_verification_result": None,

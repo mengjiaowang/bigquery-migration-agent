@@ -48,7 +48,7 @@ class TableMappingService:
             # Default path: tests/data/hive2bq.csv relative to project root
             csv_path = os.getenv(
                 "TABLE_MAPPING_CSV",
-                str(Path(__file__).parent.parent.parent / "tests" / "data" / "hive2bq.csv")
+                str(Path(__file__).parent.parent.parent / "data" / "hive2bq.csv")
             )
         
         if not os.path.exists(csv_path):
@@ -62,9 +62,7 @@ class TableMappingService:
                     hive_table = row.get("Hive 表名 (Original)", "").strip()
                     bq_table = row.get("BigQuery 表名 (Mapped)", "").strip()
                     
-                    # Skip empty mappings or "无" entries
                     if hive_table and bq_table and bq_table != "无":
-                        # Normalize spark table name to lowercase for case-insensitive matching
                         self._mappings[hive_table.lower()] = bq_table
                         
             logger.info(f"Loaded {len(self._mappings)} table mappings from {csv_path}")
@@ -82,7 +80,6 @@ class TableMappingService:
         Returns:
             The mapped BigQuery table name, or None if not found.
         """
-        # Normalize to lowercase for case-insensitive matching
         normalized = spark_table.lower().strip()
         return self._mappings.get(normalized)
     
@@ -114,14 +111,9 @@ class TableMappingService:
         )
         
         for spark_table, bq_table in sorted_mappings:
-            # Create pattern that matches the table name with word boundaries
-            # Handle both `table` and table formats
-            # Match: FROM/JOIN/INTO table_name, or `table_name`
+            # Match backtick-quoted table names OR unquoted table names with word boundaries
             patterns = [
-                # Match backtick-quoted table names
                 (rf'`{re.escape(spark_table)}`', f'`{bq_table}`'),
-                # Match unquoted table names with word boundaries
-                # This pattern matches table names after FROM, JOIN, INTO, UPDATE, TABLE keywords
                 (rf'(?i)(?<=\bFROM\s)({re.escape(spark_table)})(?=\s|$|,|\))', bq_table),
                 (rf'(?i)(?<=\bJOIN\s)({re.escape(spark_table)})(?=\s|$|,|\))', bq_table),
                 (rf'(?i)(?<=\bINTO\s)({re.escape(spark_table)})(?=\s|$|,|\))', bq_table),

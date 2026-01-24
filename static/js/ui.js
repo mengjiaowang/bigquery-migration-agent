@@ -1,3 +1,38 @@
+// Initialize Mermaid
+mermaid.initialize({ 
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: {
+        curve: 'basis'
+    }
+});
+
+// Graph Definition (Source of Truth)
+const graphDefinition = `flowchart LR
+    Start((Start)) --> Spark[Spark Check]
+    Spark -->|Valid| Convert[SQL Convert]
+    Spark -->|Invalid| End((End))
+    Convert --> DryRun[Dry Run]
+    DryRun -->|Success| LLM[LLM Check]
+    DryRun -->|Fail| Fix[Auto Fix]
+    Fix --> DryRun
+    LLM -->|Pass| Execute[Execute]
+    LLM -->|Fail| Fix
+    Execute -->|Success| Data[Data Verify]
+    Execute -->|Fail| Fix
+    Data --> End`;
+
+// Render Graph initially
+document.addEventListener('DOMContentLoaded', async () => {
+    const element = document.getElementById('workflowGraph');
+    if (element) {
+        element.innerHTML = graphDefinition;
+        await mermaid.run({
+            nodes: [element]
+        });
+    }
+});
 
 // UI Helper Functions
 
@@ -9,7 +44,7 @@ export function escapeHtml(text) {
 
 export function addLog(level, message, fromServer = false) {
     const infoPanel = document.getElementById('infoPanel');
-    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
     const line = document.createElement('div');
     line.className = 'info-line';
     
@@ -44,12 +79,12 @@ export function addServerLog(logEntry) {
 
 export function clearInput() {
     document.getElementById('sparkSql').value = '';
-    addLog('info', '已清空输入');
+    addLog('info', 'Input cleared');
 }
 
 export function clearLogs() {
     document.getElementById('infoPanel').innerHTML = '';
-    addLog('info', '日志已清除');
+    addLog('info', 'Logs cleared');
 }
 
 export function updateStatus(status, message) {
@@ -63,142 +98,131 @@ export function updateStatus(status, message) {
     text.textContent = message;
 }
 
+function setNodeStatus(nodeId, status) {
+    // Determine class
+    const className = status; // running, success, error
+    
+    // Mermaid renders nodes with IDs like "flowchart-Spark-..." but format varies by version
+    // Use substring match to be safer
+    const selector = `g.node[id*="${nodeId}"]`; 
+    const node = document.querySelector(selector);
+    
+    if (node) {
+        // Remove existing status classes
+        node.classList.remove('running', 'success', 'error', 'pending');
+        node.classList.add(className);
+    }
+}
+
 export function handleStatusUpdate(event) {
     const { step, status, attempt } = event;
     
-    // Map step to DOM ID
+    // Map step to Mermaid Node ID
     const stepMap = {
-        'spark': 'sparkStatus',
-        'convert': 'convertStatus',
-        'bq_dry_run': 'bqStatus',
-        'fix': 'bqStatus',  // Fix is part of BQ validation loop
-        'execute': 'executionStatus',
-        'data_verification': 'dataVerificationStatus'
+        'spark_sql_validate': 'Spark',
+        'sql_convert': 'Convert',
+        'llm_sql_check': 'LLM',
+        'bigquery_dry_run': 'DryRun',
+        'bigquery_error_fix': 'Fix',
+        'bigquery_sql_execute': 'Execute',
+        'data_verification': 'Data'
     };
     
-    const elementId = stepMap[step];
-    if (elementId) {
-        const element = document.getElementById(elementId);
-        if (element) {
-            if (status === 'loading') {
-                element.className = 'status-card-value loading';
-                if (step === 'bq_dry_run' && attempt) {
-                    element.textContent = `验证中 (第${attempt}次)...`;
-                } else if (step === 'fix') {
-                    element.textContent = `修复中 (第${attempt}次)...`;
-                } else {
-                    element.textContent = '运行中...';
-                }
-            } else if (status === 'success') {
-                element.className = 'status-card-value success';
-                element.textContent = '✓ 通过';
-                if (step === 'execute') element.textContent = '✓ 成功';
-            } else if (status === 'error') {
-                element.className = 'status-card-value error';
-                element.textContent = '✗ 失败';
-            }
-        }
+    const nodeId = stepMap[step];
+    if (nodeId) {
+        let nodeStatus = 'pending';
+        if (status === 'loading') nodeStatus = 'running';
+        if (status === 'success') nodeStatus = 'success';
+        if (status === 'error') nodeStatus = 'error';
+        
+        setNodeStatus(nodeId, nodeStatus);
     }
     
-    // Also update global status text if needed
+    // Also update global status text
     if (status === 'loading') {
-        updateStatus('loading', `正在执行: ${step}...`);
+        let msg = `Executing: ${step}...`;
+        if (attempt) msg += ` (Attempt ${attempt})`;
+        updateStatus('loading', msg);
     } else if (status === 'completed') {
-        updateStatus('success', '转换完成');
+        updateStatus('success', 'Conversion Completed');
+        setNodeStatus('End', 'success');
     }
 }
 
 export function updateResultCards(result) {
-    const sparkStatus = document.getElementById('sparkStatus');
-    const bqStatus = document.getElementById('bqStatus');
-    sparkStatus.textContent = result.spark_valid ? '✓ 通过' : '✗ 失败';
-    sparkStatus.className = 'status-card-value ' + (result.spark_valid ? 'success' : 'error');
-
-    const convertStatus = document.getElementById('convertStatus');
-    if (result.bigquery_sql) {
-        convertStatus.textContent = '✓ 完成';
-        convertStatus.className = 'status-card-value success';
-    } else if (result.spark_valid) {
-        // If spark valid but no BQ SQL, it might have failed during conversion
-        convertStatus.textContent = '✗ 失败';
-        convertStatus.className = 'status-card-value error';
-    } else {
-        convertStatus.textContent = '-';
-        convertStatus.className = 'status-card-value pending';
+    // Update graph nodes based on final result
+    if (result.spark_valid) setNodeStatus('Spark', 'success');
+    else setNodeStatus('Spark', 'error');
+    
+    if (result.bigquery_sql) setNodeStatus('Convert', 'success');
+    
+    if (result.validation_success) {
+        setNodeStatus('DryRun', 'success');
+    } else if (result.spark_valid) { 
+        // Only mark error if we got here
+        if (result.validation_mode === 'dry_run') setNodeStatus('DryRun', 'error');
     }
+    
+    if (result.llm_check_success) setNodeStatus('LLM', 'success');
+    else if (result.llm_check_success === false) setNodeStatus('LLM', 'error');
 
-    bqStatus.textContent = result.validation_success ? '✓ 通过' : '✗ 失败';
-    bqStatus.className = 'status-card-value ' + (result.validation_success ? 'success' : 'error');
-
-    const executionStatus = document.getElementById('executionStatus');
-    if (result.execution_success !== undefined && result.execution_success !== null) {
-        executionStatus.textContent = result.execution_success ? '✓ 成功' : '✗ 失败';
-        executionStatus.className = 'status-card-value ' + (result.execution_success ? 'success' : 'error');
-        
-    } else {
-        executionStatus.textContent = '-';
-        executionStatus.className = 'status-card-value pending';
-    }
-
-    const dataVerificationStatus = document.getElementById('dataVerificationStatus');
-    if (result.data_verification_success !== undefined && result.data_verification_success !== null) {
-        dataVerificationStatus.textContent = result.data_verification_success ? '✓ 通过' : '✗ 失败';
-        dataVerificationStatus.className = 'status-card-value ' + (result.data_verification_success ? 'success' : 'error');
-    } else {
-        dataVerificationStatus.textContent = '-';
-        dataVerificationStatus.className = 'status-card-value pending';
+    if (result.execution_success) setNodeStatus('Execute', 'success');
+    else if (result.execution_success === false) setNodeStatus('Execute', 'error');
+    
+    if (result.data_verification_success) setNodeStatus('Data', 'success');
+    else if (result.data_verification_success === false) setNodeStatus('Data', 'error');
+    
+    if (result.retry_count > 0) {
+        setNodeStatus('Fix', 'success'); // Indicate we used fix
     }
 }
 
 export function resetStatusCards() {
-    const statuses = [
-        'sparkStatus',
-        'convertStatus',
-        'bqStatus',
-        'executionStatus',
-        'dataVerificationStatus'
-    ];
-    
-    statuses.forEach(id => {
-        const element = document.getElementById(id);
-        if (element) {
-            element.textContent = '-';
-            element.className = 'status-card-value pending';
+    // Reset all nodes
+    const nodes = ['Spark', 'Convert', 'DryRun', 'LLM', 'Fix', 'Execute', 'Data', 'End'];
+    nodes.forEach(id => {
+        const selector = `g.node[id^="flowchart-${id}-"]`; 
+        const node = document.querySelector(selector);
+        if (node) {
+            node.classList.remove('running', 'success', 'error');
+            node.classList.add('pending');
         }
     });
-
+    
     // Clear SQL output
     const bqOutput = document.getElementById('bqOutput');
     if (bqOutput) {
-        bqOutput.textContent = '转换结果将在这里显示';
+    if (bqOutput) {
+        bqOutput.textContent = 'Conversion results will appear here';
+    }
     }
 }
 
 export function loadSample(sampleSql) {
     document.getElementById('sparkSql').value = sampleSql;
-    addLog('info', '已加载示例 SQL');
+    addLog('info', 'Sample SQL loaded');
 }
 
 export function copyOutput() {
     const output = document.getElementById('bqOutput').textContent;
-    if (!output || output.trim() === '转换结果将在这里显示') {
-        addLog('warning', '没有可复制的内容');
+    if (!output || output.trim() === 'Conversion results will appear here') {
+        addLog('warning', 'Nothing to copy');
         return;
     }
     
     navigator.clipboard.writeText(output).then(() => {
         const btn = document.getElementById('copyBtn');
         const originalText = btn.textContent;
-        btn.textContent = '已复制!';
+        btn.textContent = 'Copied!';
         btn.classList.add('copied');
         
         setTimeout(() => {
             btn.textContent = originalText;
             btn.classList.remove('copied');
         }, 2000);
-        addLog('info', '已复制到剪贴板');
+        addLog('info', 'Copied to clipboard');
     }).catch(err => {
         console.error('Copy failed:', err);
-        addLog('error', '复制失败');
+        addLog('error', 'Copy failed');
     });
 }
