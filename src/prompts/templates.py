@@ -107,6 +107,11 @@ FROM `trip-htl-bi-dbprj.htl_bi_temp.db_source`;
 COMMIT TRANSACTION;
 ```
 
+#### 2.2 Intermediate Tables vs CTEs
+* **Rule:** If Spark SQL creates a temporary/intermediate table and drops it later in the same script, convert it to a **CTE** (Common Table Expression).
+* **Do NOT** create explicit temporary tables in BigQuery unless strictly necessary (e.g., utilized by multiple disparate downstream queries).
+
+
 ### 3. ⚠️ Critical Syntax & Type Safety
 
 #### 3.1 Strict Type Handling (No Implicit Conversion)
@@ -120,9 +125,10 @@ If a STRING column is compared to a numeric literal, wrap the literal in quotes.
 
 (2) JOIN Keys & Column Comparisons:
 If comparing a STRING column with an INT64 column, explicitly cast the types to match.
-- Priority: Use `SAFE_CAST(string_column AS INT64)` to convert the string side.
-- Reason: `SAFE_CAST` returns NULL instead of failing if the string contains non-numeric characters.
-- Example: `ON t.id = m.id` (if t.id is STRING) → `ON SAFE_CAST(t.id AS INT64) = m.id`.
+- **Priority:** Convert the INT64 column to STRING.
+- **Reason:** Converting String to Int64 is risky (dirty data leads to NULLs or errors/inconsistency), whereas Int64 to String is safe and preserves data.
+- **Example:** `ON t.id_str = m.id_int` ➡️ `ON t.id_str = CAST(m.id_int AS STRING)`.
+
 
 (3) Inequality Logic (>, <):
 If a STRING column is involved in a numerical range check (e.g., `country > 1`), you must cast it to ensure numerical comparison rather than dictionary (lexicographical) order.
@@ -145,6 +151,8 @@ Convert Spark scheduling macros (`${{...}}`) directly into native BigQuery funct
 | `${{zdt.format("yyyyMMdd")}}` | `FORMAT_DATE('%Y%m%d', CURRENT_DATE())` |
 
 Date Comparison:** `d = '${{zdt...}}'` ➡️ `d = CURRENT_DATE()`
+* **Permanent Partition Flag:** `d = '9999-12-31'` ➡️ `d = DATE('2099-12-31')`
+
 Dynamic Tables (Read):** `FROM db.table_${{zdt...}}` ➡️ `FROM \`trip...db_table_*` WHERE _TABLE_SUFFIX = ...`
 
 ### 5. Regular Expression
