@@ -54,9 +54,9 @@ Run the script from the project root:
 The script runs in a continuous loop.
 
 1.  **Paste** your Spark SQL block.
-2.  Type `END` on a new line to process the block.
-3.  The script will print the analysis and wait for the next input.
-4.  Press `Ctrl+C` to exit.
+2.  Press **Ctrl+D** (EOF) to RUN the analysis.
+3.  The script will process the query and **restart** automatically for the next input.
+4.  Press **Ctrl+C** to EXIT.
 
 #### Example
 
@@ -67,8 +67,8 @@ INSERT INTO db.target_table
 SELECT * FROM db.source_table
 UNION ALL
 SELECT * FROM db.empty_table;
-END
 ```
+*(Press Ctrl+D)*
 
 **Output:**
 

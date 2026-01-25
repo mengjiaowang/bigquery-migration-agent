@@ -34,8 +34,7 @@ class BQMetadataService:
     def __init__(self):
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         
-        # Explicitly get credentials and set quota_project_id to avoid using the one in ADC
-        # which might be different (e.g. da-agent-prototyping) and cause 403s.
+        # Explicitly set quota_project_id to avoid ADC mismatch errors.
         credentials, project = google.auth.default(quota_project_id=project_id)
         
         self.client = bigquery.Client(project=project_id, credentials=credentials)
@@ -60,7 +59,7 @@ class BQMetadataService:
         return self._fetch_tables(OUTPUT_DATASET, is_input=False)
 
     def _fetch_tables(self, dataset: str, is_input: bool) -> Dict[str, Tuple[str, Optional[int]]]:
-        # Try fetching from __TABLES__ to get row counts
+        # Fetch row counts from __TABLES__
         tables: Dict[str, Tuple[str, Optional[int]]] = {}
         try:
             query = f"SELECT table_id, row_count FROM `{dataset}.__TABLES__`"
@@ -70,7 +69,7 @@ class BQMetadataService:
                 tables[real_name.lower()] = (real_name, row.row_count)
         except Exception as e:
             logger.warning(f"Failed to fetch from __TABLES__ for {dataset} ({e}). Falling back to INFORMATION_SCHEMA.")
-            # Fallback for views or if __TABLES__ is inaccessible
+            # Fallback to INFORMATION_SCHEMA for views or access issues
             try:
                 query = f"SELECT table_name FROM `{dataset}.INFORMATION_SCHEMA.TABLES`"
                 results = self.client.query(query).result()
@@ -100,7 +99,7 @@ class BQMetadataService:
         if normalized_name in lookup:
             real_name, row_count = lookup[normalized_name]
             exists = True
-            bq_table_short = real_name # Use real name from BQ
+            bq_table_short = real_name # Canonicalize name
         else:
             exists = False
             row_count = None
@@ -131,15 +130,33 @@ class BQMetadataService:
         return spark_table_name
 
 
+import re
+
 def clean_spark_sql(spark_sql: str) -> str:
-    """Remove markdown blocks from Spark SQL."""
+    """
+    Clean Spark SQL for parsing:
+    1. Remove markdown blocks.
+    2. Strip outer quotes (e.g. from CSV copy-paste) and unescape inner quotes.
+    3. Replace ${...} variables with placeholders for valid parsing.
+    """
     spark_sql = spark_sql.strip()
+    
+    # 1. Remove markdown blocks
     if spark_sql.startswith("```"):
         lines = spark_sql.split("\n")
         if lines[-1].strip() == "```":
             spark_sql = "\n".join(lines[1:-1]).strip()
         else:
             spark_sql = "\n".join(lines[1:]).strip()
+
+    # 2. Strip outer quotes if pasted as string literal and unescape
+    if len(spark_sql) > 2 and spark_sql.startswith('"') and spark_sql.endswith('"'):
+        inner = spark_sql[1:-1]
+        spark_sql = inner.replace('""', '"').strip()
+
+    # 3. Replace ${...} variables to avoid parsing errors in identifiers
+    spark_sql = re.sub(r'\$\{([^}]+)\}', r'_VAR_', spark_sql)
+    
     return spark_sql
 
 def get_full_table_name(table: exp.Table) -> str:
@@ -253,44 +270,38 @@ def process_sql(spark_sql: str, bq_service: BQMetadataService):
 def main():
     print("=" * 60)
     print("Spark SQL Table Extractor & BQ Mapper")
-    print("Enter Spark SQL blocks.")
-    print("Type 'END' on a new line to process a block.")
-    print("Press Ctrl+C to exit.")
+    print("Interactive Mode:")
+    print("1. Paste your Spark SQL.")
+    print("2. Press Ctrl+D (EOF) to RUN analysis.")
+    print("   (The script will auto-restart for the next query)")
+    print("3. Press Ctrl+C to EXIT.")
     print("=" * 60)
 
     bq_service = BQMetadataService()
 
-    while True:
-        try:
-            print("\nPaste SQL below (type 'END' to finish current query):", flush=True)
-            lines = []
-            while True:
-                try:
-                    line = input()
-                except EOFError:
-                    # User pressed Ctrl+D
-                    if lines:
-                        # Process whatever we have
-                        print("\nProcessing final block...", flush=True)
-                        process_sql("\n".join(lines), bq_service)
-                    print("\nExiting...", flush=True)
-                    return
-
-                if line.strip().upper() == "END":
-                    break
-                lines.append(line)
+    try:
+        # Read all input until EOF (Ctrl+D)
+        print("\nPaste SQL below. Press Ctrl+D to run:", flush=True)
+        spark_sql = sys.stdin.read()
+        
+        if spark_sql.strip():
+            print("\nProcessing...", flush=True)
+            process_sql(spark_sql, bq_service)
+        else:
+            print("\nNo input received.")
             
-            spark_sql = "\n".join(lines)
-            if spark_sql.strip():
-                process_sql(spark_sql, bq_service)
-                
-        except KeyboardInterrupt:
-            print("\nExiting...", flush=True)
-            break
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            import traceback
-            traceback.print_exc()
+        print("\nRestarting for next query...", flush=True)
+        # Restart the script to reset stdin for the next loop
+        python = sys.executable
+        os.execl(python, python, *sys.argv)
+            
+    except KeyboardInterrupt:
+        print("\nExiting...", flush=True)
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()
