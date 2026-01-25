@@ -45,6 +45,8 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     
     # Get table mapping information
     table_mapping_service = get_table_mapping_service()
+    table_mapping = state.get("table_mapping", {})
+    table_mapping_info = table_mapping_service.get_mapping_info_for_prompt(table_mapping)
     
     # Format conversion history
     history_str = ""
@@ -62,6 +64,7 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
         bigquery_sql=state["bigquery_sql"],
         error_message=error_message,
         table_ddls=state.get("table_ddls", "No DDLs available."),
+        table_mapping_info=table_mapping_info,
         conversion_history=history_str,
     )
     

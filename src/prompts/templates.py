@@ -151,6 +151,13 @@ Dynamic Tables (Read):** `FROM db.table_${{zdt...}}` ➡️ `FROM \`trip...db_ta
 
 Use raw strings `r'...'` (e.g., `REGEXP_REPLACE(col, r'\d', 'X')`).
 
+### 6. STRICT Table Mapping Rule
+
+You MUST use the provided "Table Mapping information" to resolve table names.
+- If a Spark table name exists in the mapping, you **MUST** use the corresponding BigQuery table name.
+- Do **NOT** guess table names.
+- Do **NOT** assume the dataset name is the same as the database name if a mapping is provided.
+
 """
 
 SPARK_TO_BIGQUERY_PROMPT = """
@@ -205,6 +212,9 @@ You are a BigQuery SQL Expert and Debugger. Your goal is to fix the provided "Cu
 ### 4. Target Table DDLs:
 
 {table_ddls}
+
+### 5. Table Mapping information:
+{table_mapping_info}
 
 ---
 
