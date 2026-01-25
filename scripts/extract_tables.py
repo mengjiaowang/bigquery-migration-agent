@@ -129,6 +129,23 @@ class BQMetadataService:
             return "_".join(parts)
         return spark_table_name
 
+    def get_latest_partitions(self, dataset: str, table_name: str, limit: int = 7) -> list[str]:
+        """Fetches the latest partition IDs for a table."""
+        try:
+            query = f"""
+                SELECT partition_id 
+                FROM `{dataset}.INFORMATION_SCHEMA.PARTITIONS` 
+                WHERE table_name = '{table_name}' 
+                  AND partition_id NOT IN ('__NULL__', '__UNPARTITIONED__')
+                ORDER BY partition_id DESC 
+                LIMIT {limit}
+            """
+            results = self.client.query(query).result()
+            return [row.partition_id for row in results]
+        except Exception as e:
+            logger.warning(f"Failed to fetch partitions for {dataset}.{table_name}: {e}")
+            return []
+
 
 import re
 
@@ -222,6 +239,10 @@ def process_sql(spark_sql: str, bq_service: BQMetadataService):
                 if row_count is not None:
                     if row_count > 0:
                         status_parts.append(f"Has Data/Row:{row_count}")
+                        # Fetch partitions if has data
+                        partitions = bq_service.get_latest_partitions(INPUT_DATASET, bq_name.split('.')[-1])
+                        if partitions:
+                            status_parts.append(f"Partitions: {partitions}")
                     else:
                         status_parts.append("Empty")
                 else:
