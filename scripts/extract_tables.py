@@ -229,16 +229,24 @@ def process_sql(spark_sql: str, bq_service: BQMetadataService):
         print("  (None)")
     print("-" * 60)
 
-    # Print CSV format for found input tables
-    found_inputs = []
+    # Print CSV format for found tables
+    found_tables = []
+    
+    # Inputs
     for t in sorted(all_inputs):
         bq_name, exists, _ = bq_service.resolve_input_table(t)
         if exists:
-            found_inputs.append(f"{t},{bq_name}")
+            found_tables.append(f"{t},{bq_name}")
+
+    # Outputs
+    for t in sorted(all_outputs):
+        bq_name, exists = bq_service.resolve_output_table(t)
+        if exists:
+            found_tables.append(f"{t},{bq_name}")
     
-    if found_inputs:
-        print("CSV FORMAT (Found Inputs Only):")
-        for line in found_inputs:
+    if found_tables:
+        print("CSV FORMAT (Found Tables):")
+        for line in found_tables:
             print(line)
         print("-" * 60)
 

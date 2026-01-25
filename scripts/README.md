@@ -82,7 +82,8 @@ OUTPUT TABLES TARGETED:
 Fetching table list from trip-htl-bi-dbprj.tool_results...
   [Spark] db.target_table                -> [BigQuery] trip-htl-bi-dbprj.tool_results.db_target_table (NOT FOUND)
 
-CSV FORMAT (Found Inputs Only):
+CSV FORMAT (Found Tables):
 db.source_table,trip-htl-bi-dbprj.htl_bi_temp.db_source_table
 db.empty_table,trip-htl-bi-dbprj.htl_bi_temp.db_empty_table
+db.target_table,trip-htl-bi-dbprj.tool_results.db_target_table
 ```
