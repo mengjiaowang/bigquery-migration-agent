@@ -1,0 +1,9 @@
+.agent/rules
+venv
+.DS_Store
+.env
+*.pyc
+data/table_mapping.csv
+data/table_verify.csv
+.pytest_cache
+.agent

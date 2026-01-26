@@ -1,0 +1,2 @@
+hive_table,bigquery_table
+google_trends_top_terms,bigquery-public-data.google_trends.top_terms
