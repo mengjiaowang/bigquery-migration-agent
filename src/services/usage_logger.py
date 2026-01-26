@@ -11,7 +11,10 @@ from typing import Any, Optional
 
 from google.cloud import bigquery
 from google.cloud.bigquery import SchemaField, Table, TimePartitioning
+from google.cloud import bigquery
+from google.cloud.bigquery import SchemaField, Table, TimePartitioning
 from google.api_core.exceptions import NotFound
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -32,18 +35,28 @@ class UsageLogger:
         if hasattr(self, "table_id"):
             return
             
+            
         self.table_id = os.getenv("MODEL_USAGE_LOG_TABLE")
+        self.trace_table_id = os.getenv("AGENT_TRACE_LOG_TABLE")
+        
         if not self.table_id:
             logger.warning("[UsageLogger] MODEL_USAGE_LOG_TABLE not set. usage logging disabled.")
-            return
+            
+        if not self.trace_table_id:
+            logger.warning("[UsageLogger] AGENT_TRACE_LOG_TABLE not set. trace logging disabled.")
 
-        # Ensure table exists (only runs once per process due to singleton)
-        try:
-            self._ensure_table_exists()
-        except Exception as e:
-            logger.error(f"[UsageLogger] Failed to ensure table exists: {e}")
-            # We don't disable logging here, hoping it might persist or just be a transient issue,
-            # but usually this means calls will fail.
+        # Ensure tables exist (only runs once per process due to singleton)
+        if self.table_id:
+            try:
+                self._ensure_table_exists()
+            except Exception as e:
+                logger.error(f"[UsageLogger] Failed to ensure table exists: {e}")
+
+        if self.trace_table_id:
+            try:
+                self._ensure_trace_table_exists()
+            except Exception as e:
+                logger.error(f"[UsageLogger] Failed to ensure trace table exists: {e}")
 
     def _ensure_table_exists(self):
         """Check if table exists, create if not."""
@@ -83,6 +96,42 @@ class UsageLogger:
             
             client.create_table(table, exists_ok=True)
             logger.info(f"[UsageLogger] Table {self.table_id} created/verified.")
+
+    def _ensure_trace_table_exists(self):
+        """Check if trace table exists, create if not."""
+        client = self.client
+        if not client:
+            return
+
+        try:
+            client.get_table(self.trace_table_id)
+            logger.info(f"[UsageLogger] Table {self.trace_table_id} exists.")
+        except Exception:
+            logger.info(f"[UsageLogger] Table {self.trace_table_id} not found. Creating...")
+            
+            schema = [
+                SchemaField("event_timestamp", "TIMESTAMP", mode="REQUIRED"),
+                SchemaField("project_id", "STRING", mode="REQUIRED"),
+                SchemaField("agent_session_id", "STRING", mode="REQUIRED"),
+                SchemaField("node_name", "STRING", mode="REQUIRED"),
+                SchemaField("execution_status", "STRING", mode="REQUIRED"),
+                SchemaField("start_time", "TIMESTAMP", mode="REQUIRED"),
+                SchemaField("end_time", "TIMESTAMP", mode="REQUIRED"),
+                SchemaField("duration_ms", "INTEGER", mode="REQUIRED"),
+                SchemaField("input_state", "JSON", mode="NULLABLE"),
+                SchemaField("output_state", "JSON", mode="NULLABLE"),
+                SchemaField("error_message", "STRING", mode="NULLABLE"),
+            ]
+            
+            table = Table(self.trace_table_id, schema=schema)
+            table.time_partitioning = TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY,
+                field="event_timestamp"
+            )
+            table.clustering_fields = ["agent_session_id", "node_name"]
+            
+            client.create_table(table, exists_ok=True)
+            logger.info(f"[UsageLogger] Table {self.trace_table_id} created/verified.")
     
     @property
     def client(self) -> Optional[bigquery.Client]:
@@ -204,3 +253,55 @@ class UsageLogger:
             status="ERROR",
             error_message=error_message
         )
+
+    def log_trace(
+        self,
+        agent_session_id: str,
+        node_name: str,
+        status: str,
+        start_time: datetime,
+        end_time: datetime,
+        input_state: Optional[dict[str, Any]] = None,
+        output_state: Optional[dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+    ):
+        """Log agent node execution trace."""
+        if not self.trace_table_id:
+            return
+
+        bq_client = self.client
+        if not bq_client:
+            return
+
+        try:
+            duration_ms = int((end_time - start_time).total_seconds() * 1000)
+            project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+
+            # Sanitize state (avoid overly large objects if needed, but BQ JSON handles a lot)
+            # We might want to remove large text fields if they exceed limits, but for BQ mostly OK.
+            
+            row = {
+                "event_timestamp": end_time.isoformat(),
+                "project_id": project_id,
+                "agent_session_id": agent_session_id,
+                "node_name": node_name,
+                "execution_status": status,
+                "start_time": start_time.isoformat(),
+                "end_time": end_time.isoformat(),
+                "duration_ms": duration_ms,
+                "input_state": json.dumps(input_state, default=str) if input_state else None,
+                "output_state": json.dumps(output_state, default=str) if output_state else None,
+                "error_message": error_message,
+            }
+
+            try:
+                errors = bq_client.insert_rows_json(self.trace_table_id, [row])
+                if errors:
+                    logger.error(f"[UsageLogger] Failed to insert trace rows: {errors}")
+            except NotFound:
+                logger.warning(f"[UsageLogger] Trace table {self.trace_table_id} not found. Re-verifying...")
+                self._ensure_trace_table_exists()
+                bq_client.insert_rows_json(self.trace_table_id, [row])
+                
+        except Exception as e:
+            logger.error(f"[UsageLogger] Unexpected error logging trace: {e}")

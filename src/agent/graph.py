@@ -19,6 +19,7 @@ from src.agent.nodes import (
     data_verification
 )
 from src.agent.state import AgentState
+from src.services.tracing import trace_node
 
 
 def should_continue_after_spark_validation(state: AgentState) -> Literal["sql_convert", "end"]:
@@ -109,13 +110,13 @@ def create_sql_converter_graph() -> StateGraph:
     """
     workflow = StateGraph(AgentState)
     
-    workflow.add_node("spark_sql_validate", spark_sql_validate)
-    workflow.add_node("sql_convert", sql_convert)
-    workflow.add_node("llm_sql_check", llm_sql_check)
-    workflow.add_node("bigquery_dry_run", bigquery_dry_run)
-    workflow.add_node("bigquery_error_fix", bigquery_error_fix)
-    workflow.add_node("bigquery_sql_execute", bigquery_sql_execute)
-    workflow.add_node("data_verification", data_verification)
+    workflow.add_node("spark_sql_validate", trace_node("spark_sql_validate", spark_sql_validate))
+    workflow.add_node("sql_convert", trace_node("sql_convert", sql_convert))
+    workflow.add_node("llm_sql_check", trace_node("llm_sql_check", llm_sql_check))
+    workflow.add_node("bigquery_dry_run", trace_node("bigquery_dry_run", bigquery_dry_run))
+    workflow.add_node("bigquery_error_fix", trace_node("bigquery_error_fix", bigquery_error_fix))
+    workflow.add_node("bigquery_sql_execute", trace_node("bigquery_sql_execute", bigquery_sql_execute))
+    workflow.add_node("data_verification", trace_node("data_verification", data_verification))
     
     workflow.set_entry_point("spark_sql_validate")
     
