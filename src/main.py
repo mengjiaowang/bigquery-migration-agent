@@ -106,9 +106,19 @@ async def root():
             "/ui": "GET - Web UI for SQL conversion",
             "/convert": "POST - Convert Spark SQL to BigQuery SQL",
             "/health": "GET - Health check",
+            "/config": "GET - Current feature configuration",
             "/logs/stream": "GET - SSE log stream",
             "/logs/recent": "GET - Recent logs",
         }
+    }
+
+
+@app.get("/config")
+async def get_config():
+    """Get current configuration."""
+    return {
+        "execute_enabled": os.getenv("EXECUTE_ENABLED", "true").lower() == "true",
+        "data_verification_enabled": os.getenv("DATA_VERIFICATION_ENABLED", "true").lower() == "true"
     }
 
 

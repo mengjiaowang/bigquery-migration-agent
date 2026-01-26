@@ -51,18 +51,25 @@ def should_continue_after_dry_run(state: AgentState) -> Literal["llm_sql_check",
     return "end"
 
 
-def should_continue_after_llm_check(state: AgentState) -> Literal["bigquery_sql_execute", "bigquery_error_fix"]:
+def should_continue_after_llm_check(state: AgentState) -> Literal["bigquery_sql_execute", "bigquery_error_fix", "end"]:
     """Determine if we should continue to execution or fix after LLM check.
     
     Args:
         state: Current agent state.
         
     Returns:
-        "bigquery_sql_execute" if LLM check passed, "bigquery_error_fix" otherwise.
+        "bigquery_sql_execute" if LLM check passed and execution enabled,
+        "bigquery_error_fix" if LLM check failed,
+        "end" if execution is disabled.
     """
-    if state.get("llm_check_success", True): # Default to True if not present for some reason
-        return "bigquery_sql_execute"
-    return "bigquery_error_fix"
+    if not state.get("llm_check_success", True): # Default to True if not present
+        return "bigquery_error_fix"
+        
+    # Check if execution is enabled
+    if os.getenv("EXECUTE_ENABLED", "true").lower() != "true":
+        return "end"
+        
+    return "bigquery_sql_execute"
 
 
 def should_retry_after_execution(state: AgentState) -> Literal["data_verification", "bigquery_error_fix", "end"]:
@@ -72,9 +79,14 @@ def should_retry_after_execution(state: AgentState) -> Literal["data_verificatio
         state: Current agent state.
         
     Returns:
-        "data_verification" if execution passed, "bigquery_error_fix" if failed and retries available, "end" otherwise.
+        "data_verification" if execution passed and verification enabled,
+        "bigquery_error_fix" if failed and retries available,
+        "end" otherwise.
     """
     if state["execution_success"]:
+        # Check if data verification is enabled
+        if os.getenv("DATA_VERIFICATION_ENABLED", "true").lower() != "true":
+            return "end"
         return "data_verification"
     
     # Check if we have retries left
@@ -130,6 +142,7 @@ def create_sql_converter_graph() -> StateGraph:
         {
             "bigquery_sql_execute": "bigquery_sql_execute",
             "bigquery_error_fix": "bigquery_error_fix",
+            "end": END,
         }
     )
     

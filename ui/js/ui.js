@@ -24,13 +24,47 @@ const graphDefinition = `flowchart LR
     Data --> End`;
 
 // Render Graph initially
+// Render Graph initially
 document.addEventListener('DOMContentLoaded', async () => {
-    const element = document.getElementById('workflowGraph');
-    if (element) {
-        element.innerHTML = graphDefinition;
-        await mermaid.run({
-            nodes: [element]
-        });
+    // Fetch configuration first
+    try {
+        const response = await fetch('/config');
+        const config = await response.json();
+        
+        let graphDef = graphDefinition;
+        
+        // Option 1: Ghost Mode (Dashed lines, grey text)
+        // We append style definitions to the graph source
+        if (!config.execute_enabled) {
+            graphDef += '\n    style Execute stroke-dasharray: 5 5,stroke:#444,color:#666';
+        }
+        
+        if (!config.data_verification_enabled) {
+            graphDef += '\n    style Data stroke-dasharray: 5 5,stroke:#444,color:#666';
+        }
+        
+        const element = document.getElementById('workflowGraph');
+        if (element) {
+            element.innerHTML = graphDef;
+            await mermaid.run({
+                nodes: [element]
+            });
+        }
+        
+        // Log status to info panel
+        if (!config.execute_enabled) addLog('info', 'Execute step is disabled (Ghost Mode)');
+        if (!config.data_verification_enabled) addLog('info', 'Data Verification step is disabled (Ghost Mode)');
+        
+    } catch (error) {
+        console.error('Failed to load config:', error);
+        // Fallback to default render
+        const element = document.getElementById('workflowGraph');
+        if (element) {
+            element.innerHTML = graphDefinition;
+            await mermaid.run({
+                nodes: [element]
+            });
+        }
     }
 });
 
