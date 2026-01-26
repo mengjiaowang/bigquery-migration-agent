@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from src.agent.graph import run_conversion
 from src.schemas.models import ConvertRequest, ConvertResponse, ConversionHistory
 from src.services.log_stream import setup_log_streaming, subscribe_logs, get_recent_logs, init_log_loop
+from src.services.usage_logger import UsageLogger
 
 
 load_dotenv()
@@ -57,6 +58,12 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
         logger.warning("The service may not function correctly without these variables.")
     
+    # Initialize Usage Logger (will check/create table)
+    try:
+        UsageLogger()
+    except Exception as e:
+        logger.warning(f"Failed to initialize UsageLogger: {e}")
+
     logger.info("=" * 60)
     logger.info("Spark to BigQuery SQL Converter - Starting up")
     logger.info(f"Log Level: {log_level}")

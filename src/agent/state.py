@@ -1,6 +1,6 @@
 """Agent state definition for LangGraph workflow."""
 
-from typing import Optional, TypedDict
+from typing import Any, Optional, TypedDict
 
 from src.schemas.models import ConversionHistory
 
@@ -47,3 +47,9 @@ class AgentState(TypedDict):
     # LLM Check results
     llm_check_success: Optional[bool]
     llm_check_error: Optional[str]
+
+    # Token Usage Tracking
+    token_usage: Optional[dict[str, Any]]
+    
+    # Session ID for logging
+    agent_session_id: Optional[str]

@@ -1,7 +1,11 @@
 """LangGraph workflow definition for Hive to BigQuery SQL conversion."""
 
+import logging
 import os
+import uuid
 from typing import Literal, Optional
+
+logger = logging.getLogger(__name__)
 
 from langgraph.graph import END, StateGraph
 
@@ -177,9 +181,14 @@ def run_conversion(spark_sql: str, max_retries: Optional[int] = None) -> AgentSt
     if max_retries is None:
         max_retries = int(os.getenv("AUTO_FIX_MAX_RETRIES", "10"))
 
+    # Generate session ID
+    session_id = str(uuid.uuid4())
+    logger.info(f"[Workflow] Starting session: {session_id}")
+
     graph = create_sql_converter_graph()
     
     initial_state: AgentState = {
+        "agent_session_id": session_id,
         "spark_sql": spark_sql,
         "spark_valid": False,
         "spark_error": None,
@@ -199,8 +208,44 @@ def run_conversion(spark_sql: str, max_retries: Optional[int] = None) -> AgentSt
         "data_verification_error": None,
         "llm_check_success": None,
         "llm_check_error": None,
+        "token_usage": {},
     }
     
     final_state = graph.invoke(initial_state)
+    
+    # Log token usage summary
+    token_usage = final_state.get("token_usage")
+    if token_usage:
+        logger.info("=" * 60)
+        logger.info("[Token Usage Summary]")
+        
+        # Log Global Totals
+        if "total" in token_usage:
+            logger.info("  Total Usage:")
+            total = token_usage["total"]
+            logger.info(f"    Input Tokens:   {total.get('input_tokens', 0)}")
+            logger.info(f"    Output Tokens:  {total.get('output_tokens', 0)}")
+            logger.info(f"    Total Tokens:   {total.get('total_tokens', 0)}")
+            logger.info(f"    Cached Tokens:  {total.get('cached_content_tokens', 0)}")
+            
+        if "nodes" in token_usage:
+            logger.info("-" * 40)
+            logger.info("  Breakdown by Node:")
+            for node_name, stats in token_usage["nodes"].items():
+                model_name = stats.get('model', 'unknown')
+                
+                usage = stats.get("usage", {})
+                input_tokens = usage.get('input_tokens', 0)
+                output_tokens = usage.get('output_tokens', 0)
+                cached_tokens = usage.get('cached_content_tokens', 0)
+                
+                logger.info(f"    [{node_name}]")
+                logger.info(f"      Model:      {model_name}")
+                logger.info(f"      Calls:      {stats.get('call_count', 0)}")
+                logger.info(f"      Input:      {input_tokens}")
+                logger.info(f"      Output:     {output_tokens}")
+                logger.info(f"      Cached:     {cached_tokens}")
+
+        logger.info("=" * 60)
     
     return final_state

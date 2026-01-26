@@ -2,13 +2,15 @@
 
 import json
 import logging
+import time
 from typing import Any
 
 from src.agent.state import AgentState
 from src.prompts.templates import LLM_SQL_CHECK_PROMPT
 from src.services.llm import get_llm
 from src.services.table_mapping import get_table_mapping_service
-from src.services.utils import get_content_text
+from src.services.utils import get_content_text, accumulate_token_usage
+from src.services.usage_logger import UsageLogger
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,8 @@ def llm_sql_check(state: AgentState) -> dict[str, Any]:
     logger.info("=" * 60)
     logger.info("[Node: llm_sql_check] Starting LLM SQL check", extra={"type": "status", "step": "llm_sql_check", "status": "loading"})
     
+    token_usage = state.get("token_usage", {})
+    
     spark_sql = state["spark_sql"]
     bigquery_sql = state["bigquery_sql"]
     
@@ -38,7 +42,39 @@ def llm_sql_check(state: AgentState) -> dict[str, Any]:
     )
     
     llm = get_llm("llm_sql_check")
-    response = llm.invoke(prompt)
+    try:
+        start_time = time.time()
+        response = llm.invoke(prompt)
+        end_time = time.time()
+        latency_ms = int((end_time - start_time) * 1000)
+        
+        usage = response.response_metadata.get("token_usage") or response.usage_metadata
+        model_name = getattr(llm, "model", getattr(llm, "model_name", "unknown"))
+        token_usage = accumulate_token_usage(token_usage, usage, node_name="llm_sql_check", model_name=model_name)
+        
+        # Log to BQ
+        UsageLogger().log_usage(
+            agent_session_id=state.get("agent_session_id", "unknown"),
+            node_name="llm_sql_check",
+            model_name=model_name,
+            usage=usage,
+            status="SUCCESS",
+            latency_ms=latency_ms
+        )
+    except Exception as e:
+        logger.error(f"[Node: llm_sql_check] ✗ Error during LLM invoke: {e}")
+        # Log failure to BQ
+        UsageLogger().log_error(
+            agent_session_id=state.get("agent_session_id", "unknown"),
+            node_name="llm_sql_check",
+            model_name=getattr(llm, "model_name", "unknown"),
+            error_message=str(e)
+        )
+        return {
+            "llm_check_success": False,
+            "llm_check_error": str(e),
+            "token_usage": token_usage,
+        }
     
     try:
         # Remove chitchat
@@ -61,12 +97,14 @@ def llm_sql_check(state: AgentState) -> dict[str, Any]:
             return {
                 "llm_check_success": True,
                 "llm_check_error": None,
+                "token_usage": token_usage,
             }
         else:
             logger.warning(f"[Node: llm_sql_check] ✗ LLM SQL check failed: {error}", extra={"type": "status", "step": "llm_sql_check", "status": "error"})
             return {
                 "llm_check_success": False,
                 "llm_check_error": error,
+                "token_usage": token_usage,
             }
             
     except json.JSONDecodeError:
@@ -76,10 +114,12 @@ def llm_sql_check(state: AgentState) -> dict[str, Any]:
         return {
             "llm_check_success": False,
             "llm_check_error": "Failed to parse LLM Check response",
+            "token_usage": token_usage,
         }
     except Exception as e:
         logger.error(f"[Node: llm_sql_check] ✗ Error during LLM check: {e}")
         return {
             "llm_check_success": False,
             "llm_check_error": str(e),
+            "token_usage": token_usage,
         }

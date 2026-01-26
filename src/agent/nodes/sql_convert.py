@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from typing import Any
 
 from src.agent.state import AgentState
@@ -9,14 +10,15 @@ from src.prompts.templates import SPARK_TO_BIGQUERY_PROMPT
 from src.services.llm import get_llm
 from src.services.sql_chunker import SQLChunker, ChunkedConverter
 from src.services.table_mapping import get_table_mapping_service
-from src.services.utils import get_content_text
+from src.services.utils import get_content_text, accumulate_token_usage
+from src.services.usage_logger import UsageLogger
 
 logger = logging.getLogger(__name__)
 
 
 from src.services.bigquery import BigQueryService
 
-def _convert_single_chunk(spark_sql: str, table_mapping_info: str, table_ddls: str) -> str:
+def _convert_single_chunk(spark_sql: str, table_mapping_info: str, table_ddls: str) -> tuple[str, dict]:
     """Convert a single SQL chunk using LLM.
     
     Args:
@@ -25,16 +27,22 @@ def _convert_single_chunk(spark_sql: str, table_mapping_info: str, table_ddls: s
         table_ddls: DDLs for the target BigQuery tables.
         
     Returns:
-        The converted BigQuery SQL.
+        Tuple of (converted BigQuery SQL, token usage dict, model name).
     """
     llm = get_llm("sql_convert")
+    # ChatGoogleGenerativeAI uses 'model', others might use 'model_name'
+    model_name = getattr(llm, "model", getattr(llm, "model_name", "unknown"))
     
     prompt = SPARK_TO_BIGQUERY_PROMPT.format(
         spark_sql=spark_sql,
         table_mapping_info=table_mapping_info,
         table_ddls=table_ddls,
     )
+    
+    start_time = time.time()
     response = llm.invoke(prompt)
+    end_time = time.time()
+    latency_ms = int((end_time - start_time) * 1000)
     
     # Remove markdown code blocks
     bigquery_sql = get_content_text(response.content).strip()
@@ -43,7 +51,9 @@ def _convert_single_chunk(spark_sql: str, table_mapping_info: str, table_ddls: s
         # Remove first line (```sql or ```) and last line (```)
         bigquery_sql = "\n".join(lines[1:-1]).strip()
     
-    return bigquery_sql
+    usage = response.response_metadata.get("token_usage") or response.usage_metadata
+    
+    return bigquery_sql, usage, model_name, latency_ms
 
 
 def sql_convert(state: AgentState) -> dict[str, Any]:
@@ -72,6 +82,7 @@ def sql_convert(state: AgentState) -> dict[str, Any]:
     
     table_mapping_service = get_table_mapping_service()
     table_mapping = state.get("table_mapping", {})
+    token_usage = state.get("token_usage", {})
     table_mapping_info = table_mapping_service.get_mapping_info_for_prompt(table_mapping)
     
     logger.info(f"[Node: sql_convert] Using {len(table_mapping)} table mappings from state")
@@ -114,8 +125,13 @@ def sql_convert(state: AgentState) -> dict[str, Any]:
             logger.info(f"[Node: sql_convert] Split into {len(chunks)} chunks")
             
             # Create converter with the single-chunk converter function
+            # Create converter with the single-chunk converter function
             def converter_func(sql: str) -> str:
-                return _convert_single_chunk(sql, table_mapping_info, table_ddls)
+                sql_res, usage, model_name, latency_ms = _convert_single_chunk(sql, table_mapping_info, table_ddls)
+                nonlocal token_usage
+                token_usage = accumulate_token_usage(token_usage, usage, node_name="sql_convert", model_name=model_name)
+                # TODO: storing latency for chunks? For now we just log it in usage logging if improved.
+                return sql_res
             
             chunked_converter = ChunkedConverter(converter_func)
             bigquery_sql = chunked_converter.convert_chunks(chunks)
@@ -128,8 +144,34 @@ def sql_convert(state: AgentState) -> dict[str, Any]:
     else:
         # Direct conversion without chunking
         logger.info("[Node: sql_convert] Using direct conversion (no chunking)")
-        bigquery_sql = _convert_single_chunk(spark_sql, table_mapping_info, table_ddls)
+        bigquery_sql, usage, model_name, latency_ms = _convert_single_chunk(spark_sql, table_mapping_info, table_ddls)
+        token_usage = accumulate_token_usage(token_usage, usage, node_name="sql_convert", model_name=model_name)
     
+    # Log usage to BQ
+    usage_logger = UsageLogger()
+    session_id = state.get("agent_session_id", "unknown")
+    
+    # We log the *incremental* usage here effectively?
+    # Actually accumulate_token_usage tracks totals...
+    # We should log the *current node's* usage.
+    # We can fetch it from token_usage["nodes"]["sql_convert"]
+    
+    if token_usage and "nodes" in token_usage and "sql_convert" in token_usage["nodes"]:
+        node_stats = token_usage["nodes"]["sql_convert"]
+        # Note: if chunked, this might be aggregated usage of 1 call or multiple?
+        # accumulate_token_usage aggregates into 'usage' key.
+        usage_payload = node_stats.get("usage", {})
+        model_used = node_stats.get("model", "unknown")
+        
+        usage_logger.log_usage(
+            agent_session_id=session_id,
+            node_name="sql_convert",
+            model_name=model_used,
+            usage=usage_payload,
+            status="SUCCESS",
+            latency_ms=locals().get('latency_ms') # Safe access if chunking used (latency_ms might be undefined or last chunk's)
+        )
+
     bq_service.close()
     
     # Apply table name mapping
@@ -143,4 +185,5 @@ def sql_convert(state: AgentState) -> dict[str, Any]:
         "table_ddls": table_ddls,
         "retry_count": 0,
         "conversion_history": [],
+        "token_usage": token_usage,
     }

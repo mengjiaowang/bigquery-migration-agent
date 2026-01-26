@@ -1,13 +1,15 @@
 """SQL fix node."""
 
 import logging
+import time
 from typing import Any
 
 from src.agent.state import AgentState
 from src.prompts.templates import FIX_BIGQUERY_PROMPT
 from src.services.llm import get_llm
 from src.services.table_mapping import get_table_mapping_service
-from src.services.utils import get_content_text
+from src.services.utils import get_content_text, accumulate_token_usage
+from src.services.usage_logger import UsageLogger
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,25 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
         conversion_history=history_str,
     )
     
+    start_time = time.time()
     response = llm.invoke(prompt)
+    end_time = time.time()
+    latency_ms = int((end_time - start_time) * 1000)
+    
+    token_usage = state.get("token_usage", {})
+    usage = response.response_metadata.get("token_usage") or response.usage_metadata
+    model_name = getattr(llm, "model", getattr(llm, "model_name", "unknown"))
+    token_usage = accumulate_token_usage(token_usage, usage, node_name="bigquery_error_fix", model_name=model_name)
+    
+    # Log usage to BQ
+    UsageLogger().log_usage(
+        agent_session_id=state.get("agent_session_id", "unknown"),
+        node_name="bigquery_error_fix",
+        model_name=model_name,
+        usage=usage,
+        status="SUCCESS",
+        latency_ms=latency_ms
+    )
     
     # Remove markdown code blocks
     fixed_sql = get_content_text(response.content).strip()
@@ -83,4 +103,5 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     return {
         "bigquery_sql": fixed_sql,
         "retry_count": retry_count,
+        "token_usage": token_usage,
     }
