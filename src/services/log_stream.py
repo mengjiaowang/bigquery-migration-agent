@@ -37,6 +37,9 @@ class StreamingLogHandler(logging.Handler):
                     log_entry["attempt"] = extra["attempt"]
                 if "data" in extra:
                     log_entry["data"] = extra["data"]
+            elif log_entry["type"] == "sql_output":
+                if "sql" in extra:
+                    log_entry["sql"] = extra["sql"]
             
             _log_buffer.append(log_entry)
             

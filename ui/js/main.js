@@ -19,6 +19,40 @@ ORDER BY
   rank ASC
 LIMIT 100`;
 
+// Sound Effects
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(type) {
+    if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    if (type === 'success') {
+        // Cheerful "ding" (C5 -> E5)
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+        oscillator.frequency.exponentialRampToValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.5);
+    } else if (type === 'error') {
+        // Error "buzz" (low saw)
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(150, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.3);
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     // Connect SSE
@@ -26,7 +60,16 @@ document.addEventListener('DOMContentLoaded', () => {
         (logEntry) => {
             if (logEntry.type === 'status') {
                 UI.handleStatusUpdate(logEntry);
+            } else if (logEntry.type === 'sql_output') {
+                // Streaming SQL Output
+                const bqOutput = document.getElementById('bqOutput');
+                if (bqOutput) {
+                   bqOutput.textContent = logEntry.sql;
+                   // Show save button
+                   document.getElementById('saveBtn').style.display = 'inline-flex';
+                }
             }
+            
             if (logEntry.type === 'log' || logEntry.type === 'status') {
                 UI.addServerLog(logEntry);
             }
@@ -37,8 +80,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Bind events
     document.getElementById('convertBtn').addEventListener('click', handleConvert);
-    document.querySelector('button[onclick="clearInput()"]').onclick = UI.clearInput; // Rebind or remove inline onclick
-    // Actually best to replace all inline onclicks
     
     // Replace inline onclicks with event listeners
     replaceInlineEvents();
@@ -80,6 +121,8 @@ function replaceInlineEvents() {
         saveBtn.addEventListener('click', saveResult);
     }
 }
+
+
 
 async function handleConvert() {
     if (isConverting) return;
@@ -123,8 +166,10 @@ async function handleConvert() {
 
         if (result.validation_success) {
             UI.updateStatus('success', 'Conversion Successful');
+            playSound('success'); 
         } else {
             UI.updateStatus('error', 'Validation Failed');
+            playSound('error');
         }
 
         if (result.success) {
@@ -145,6 +190,7 @@ async function handleConvert() {
         console.error('Conversion failed:', error);
         UI.addLog('error', `Request Failed: ${error.message}`);
         UI.updateStatus('error', 'Request Failed');
+        playSound('error');
     } finally {
         isConverting = false;
         btn.disabled = false;

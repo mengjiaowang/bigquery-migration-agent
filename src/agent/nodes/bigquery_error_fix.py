@@ -83,6 +83,9 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
     
     logger.info(f"[Node: bigquery_error_fix] SQL fixed successfully", extra={"type": "status", "step": "bigquery_error_fix", "status": "success"})
 
+    # EMIT SQL OUTPUT for streaming
+    logger.info("Emitting fixed SQL for streaming", extra={"type": "sql_output", "sql": fixed_sql})
+
     return {
         "bigquery_sql": fixed_sql,
         "retry_count": retry_count,

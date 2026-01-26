@@ -136,6 +136,10 @@ def sql_convert(state: AgentState) -> dict[str, Any]:
     bigquery_sql = table_mapping_service.replace_table_names(bigquery_sql, table_mapping)
     
     logger.info(f"[Node: sql_convert] Conversion completed ({len(bigquery_sql)} chars)", extra={"type": "status", "step": "sql_convert", "status": "success"})
+    
+    # EMIT SQL OUTPUT for streaming
+    logger.info("Emitting converted SQL for streaming", extra={"type": "sql_output", "sql": bigquery_sql})
+    
     logger.debug(f"[Node: sql_convert] Final BigQuery SQL:\n{bigquery_sql}")
     
     return {
