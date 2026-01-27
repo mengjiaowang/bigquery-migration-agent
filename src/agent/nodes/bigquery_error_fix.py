@@ -84,7 +84,8 @@ def bigquery_error_fix(state: AgentState) -> dict[str, Any]:
         model_name=model_name,
         usage=usage,
         status="SUCCESS",
-        latency_ms=latency_ms
+        latency_ms=latency_ms,
+        run_id=state.get("run_id")
     )
     
     # Remove markdown code blocks

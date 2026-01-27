@@ -76,6 +76,7 @@ class UsageLogger:
                 SchemaField("project_id", "STRING", mode="REQUIRED"),
                 SchemaField("location", "STRING", mode="NULLABLE"),
                 SchemaField("agent_session_id", "STRING", mode="NULLABLE"),
+                SchemaField("run_id", "STRING", mode="NULLABLE"),
                 SchemaField("node_name", "STRING", mode="REQUIRED"),
                 SchemaField("model_name", "STRING", mode="REQUIRED"),
                 SchemaField("input_tokens", "INTEGER", mode="NULLABLE"),
@@ -96,6 +97,18 @@ class UsageLogger:
             
             client.create_table(table, exists_ok=True)
             logger.info(f"[UsageLogger] Table {self.table_id} created/verified.")
+        
+        # Schema migration: ensure run_id exists
+        try:
+            table = client.get_table(self.table_id)
+            if "run_id" not in [f.name for f in table.schema]:
+                logger.info(f"[UsageLogger] Adding run_id column to {self.table_id}")
+                new_schema = table.schema[:]
+                new_schema.append(SchemaField("run_id", "STRING", mode="NULLABLE"))
+                table.schema = new_schema
+                client.update_table(table, ["schema"])
+        except Exception as e:
+            logger.warning(f"[UsageLogger] Failed to update schema for {self.table_id}: {e}")
 
     def _ensure_trace_table_exists(self):
         """Check if trace table exists, create if not."""
@@ -113,6 +126,7 @@ class UsageLogger:
                 SchemaField("event_timestamp", "TIMESTAMP", mode="REQUIRED"),
                 SchemaField("project_id", "STRING", mode="REQUIRED"),
                 SchemaField("agent_session_id", "STRING", mode="REQUIRED"),
+                SchemaField("run_id", "STRING", mode="NULLABLE"),
                 SchemaField("node_name", "STRING", mode="REQUIRED"),
                 SchemaField("execution_status", "STRING", mode="REQUIRED"),
                 SchemaField("start_time", "TIMESTAMP", mode="REQUIRED"),
@@ -132,6 +146,18 @@ class UsageLogger:
             
             client.create_table(table, exists_ok=True)
             logger.info(f"[UsageLogger] Table {self.trace_table_id} created/verified.")
+
+        # Schema migration: ensure run_id exists
+        try:
+            table = client.get_table(self.trace_table_id)
+            if "run_id" not in [f.name for f in table.schema]:
+                logger.info(f"[UsageLogger] Adding run_id column to {self.trace_table_id}")
+                new_schema = table.schema[:]
+                new_schema.append(SchemaField("run_id", "STRING", mode="NULLABLE"))
+                table.schema = new_schema
+                client.update_table(table, ["schema"])
+        except Exception as e:
+            logger.warning(f"[UsageLogger] Failed to update schema for {self.trace_table_id}: {e}")
     
     @property
     def client(self) -> Optional[bigquery.Client]:
@@ -153,6 +179,7 @@ class UsageLogger:
         status: str = "SUCCESS",
         error_message: Optional[str] = None,
         latency_ms: Optional[int] = None,
+        run_id: Optional[str] = None,
     ):
         """
         Log a model call event to BigQuery.
@@ -205,6 +232,7 @@ class UsageLogger:
                 "project_id": project_id,
                 "location": location,
                 "agent_session_id": agent_session_id,
+                "run_id": run_id,
                 "node_name": node_name,
                 "model_name": model_name,
                 "input_tokens": input_tokens,
@@ -243,6 +271,7 @@ class UsageLogger:
         node_name: str,
         model_name: str,
         error_message: str,
+        run_id: Optional[str] = None,
     ):
         """Helper to log failed calls."""
         self.log_usage(
@@ -251,7 +280,8 @@ class UsageLogger:
             model_name=model_name,
             usage={},
             status="ERROR",
-            error_message=error_message
+            error_message=error_message,
+            run_id=run_id
         )
 
     def log_trace(
@@ -264,6 +294,7 @@ class UsageLogger:
         input_state: Optional[dict[str, Any]] = None,
         output_state: Optional[dict[str, Any]] = None,
         error_message: Optional[str] = None,
+        run_id: Optional[str] = None,
     ):
         """Log agent node execution trace."""
         if not self.trace_table_id:
@@ -283,7 +314,9 @@ class UsageLogger:
             row = {
                 "event_timestamp": end_time.isoformat(),
                 "project_id": project_id,
+                "project_id": project_id,
                 "agent_session_id": agent_session_id,
+                "run_id": run_id,
                 "node_name": node_name,
                 "execution_status": status,
                 "start_time": start_time.isoformat(),

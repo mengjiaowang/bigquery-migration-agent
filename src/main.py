@@ -245,7 +245,6 @@ async def convert_sql(request: ConvertRequest):
             conversion_history=history,
             warning=warning,
             execution_success=result.get("execution_success"),
-            execution_result=result.get("execution_result"),
             execution_target_table=result.get("execution_target_table"),
             execution_error=result.get("execution_error"),
             data_verification_success=result.get("data_verification_success"),

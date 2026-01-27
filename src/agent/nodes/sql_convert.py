@@ -169,7 +169,8 @@ def sql_convert(state: AgentState) -> dict[str, Any]:
             model_name=model_used,
             usage=usage_payload,
             status="SUCCESS",
-            latency_ms=locals().get('latency_ms') # Safe access if chunking used (latency_ms might be undefined or last chunk's)
+            latency_ms=locals().get('latency_ms'), # Safe access if chunking used (latency_ms might be undefined or last chunk's)
+            run_id=state.get("run_id")
         )
 
     bq_service.close()

@@ -78,6 +78,18 @@ cp env.example .env
 | `DATA_VERIFICATION_MODE` | Verification method | `row_count` or `full_content` |
 | `DATA_VERIFICATION_ALLOWED_DATASET` | Safety check for allowed target dataset | - |
 
+### Feature Toggles
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EXECUTE_ENABLED` | Enable BigQuery execution step | `false` |
+| `DATA_VERIFICATION_ENABLED` | Enable data verification step | `false` |
+
+### Monitoring & Auditing
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `MODEL_USAGE_LOG_TABLE` | BigQuery table for tracking LLM token usage | `project.dataset.usage_log` |
+| `AGENT_TRACE_LOG_TABLE` | BigQuery table for agent execution tracing | `project.dataset.trace_log` |
+
 ### Connection Configuration
 The service uses **Application Default Credentials (ADC)** for authentication.
 Ensure you have run:

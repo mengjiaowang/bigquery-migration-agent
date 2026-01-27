@@ -35,7 +35,7 @@ class AgentState(TypedDict):
     
     # Execution results
     execution_success: Optional[bool]
-    execution_result: Optional[list[dict] | str]
+    # execution_result removed
     execution_target_table: Optional[str]
     execution_error: Optional[str]
 

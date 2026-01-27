@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from typing import Any
 
 import sqlglot
@@ -86,20 +87,36 @@ def bigquery_sql_execute(state: AgentState) -> dict[str, Any]:
 
 
 
+
+    # Prepare labels
+    run_id = state.get("run_id", "unknown")
+    agent_session_id = state.get("agent_session_id", "unknown")
+    
+    # Sanitize labels (lowercase, alphanumeric, underscores, dashes)
+    def sanitize_label(value: str) -> str:
+        return re.sub(r'[^a-z0-9_-]', '_', str(value).lower())[:63]
+        
+    labels = {
+        "run_id": sanitize_label(run_id),
+        "agent_session_id": sanitize_label(agent_session_id),
+        "caller": "sql_translation_agent"
+    }
+
     bq_service = BigQueryService()
-    execution_result = bq_service.execute_query(state["bigquery_sql"])
+    execution_result = bq_service.execute_query(state["bigquery_sql"], labels=labels)
     bq_service.close()
     
     if execution_result.success:
-        logger.info("[Node: bigquery_sql_execute] ✓ SQL execution successful", extra={"type": "status", "step": "bigquery_sql_execute", "status": "success", "data": {"target_table": execution_result.target_table}})
+        logger.info("[Node: bigquery_sql_execute] ✓ SQL execution successful", extra={"type": "status", "step": "bigquery_sql_execute", "status": "success", "data": {"target_table": execution_result.target_table, "job_id": execution_result.job_id}})
         logger.info(f"Target Table: {execution_result.target_table}")
-        logger.info(f"Result: {execution_result.result}")
+        logger.info(f"Job ID: {execution_result.job_id}")
+        # logger.info(f"Result: {execution_result.result}") # Result might be too large to log
     else:
         logger.error(f"[Node: bigquery_sql_execute] ✗ SQL execution failed: {execution_result.error_message}", extra={"type": "status", "step": "bigquery_sql_execute", "status": "error"})
     
     return {
         "execution_success": execution_result.success,
-        "execution_result": execution_result.result,
         "execution_target_table": execution_result.target_table,
+        "execution_job_id": execution_result.job_id,
         "execution_error": execution_result.error_message,
     }

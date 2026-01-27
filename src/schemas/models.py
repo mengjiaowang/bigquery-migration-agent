@@ -36,7 +36,7 @@ class ConvertResponse(BaseModel):
 
     # Execution results
     execution_success: Optional[bool] = None
-    execution_result: Optional[Any] = None
+    # execution_result removed
     execution_target_table: Optional[str] = None
     execution_error: Optional[str] = None
 

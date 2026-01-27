@@ -26,6 +26,7 @@ class ExecutionResult:
     result: Optional[list[dict] | str] = None
     target_table: Optional[str] = None
     error_message: Optional[str] = None
+    job_id: Optional[str] = None
 
 
 class BigQueryService:
@@ -119,18 +120,20 @@ class BigQueryService:
                 error_message=f"Unexpected error: {str(e)}"
             )
 
-    def execute_query(self, sql: str, limit: int = 100) -> ExecutionResult:
+    def execute_query(self, sql: str, limit: int = 100, labels: Optional[dict[str, str]] = None) -> ExecutionResult:
         """Execute BigQuery SQL and return results.
         
         Args:
             sql: The BigQuery SQL statement to execute.
             limit: Maximum number of rows to return.
+            labels: Optional dictionary of labels to attach to the job.
             
         Returns:
             ExecutionResult with success status, data/message, and error message.
         """
         try:
-            query_job = self.client.query(sql)
+            job_config = bigquery.QueryJobConfig(labels=labels) if labels else None
+            query_job = self.client.query(sql, job_config=job_config)
             
             query_job.result()
             
@@ -150,7 +153,8 @@ class BigQueryService:
                 return ExecutionResult(
                     success=True,
                     result=message,
-                    target_table=target_table
+                    target_table=target_table,
+                    job_id=query_job.job_id
                 )
             else:
                 # SELECT or other query returning rows
@@ -160,7 +164,8 @@ class BigQueryService:
                 return ExecutionResult(
                     success=True,
                     result=result_data,
-                    target_table=target_table
+                    target_table=target_table,
+                    job_id=query_job.job_id
                 )
                 
         except Exception as e:

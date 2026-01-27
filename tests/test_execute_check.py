@@ -2,7 +2,7 @@
 import pytest
 import os
 from unittest.mock import MagicMock, patch
-from src.agent.nodes.execute import execute_node
+from src.agent.nodes.bigquery_sql_execute import bigquery_sql_execute as execute_node
 from src.agent.state import AgentState
 
 ALLOWED_PREFIX = "your-project-id.output_dataset"
@@ -22,7 +22,6 @@ def base_state():
         max_retries=3,
         conversion_history=[],
         execution_success=None,
-        execution_result=None,
         execution_target_table=None,
         execution_error=None,
         data_verification_success=None,
@@ -30,7 +29,7 @@ def base_state():
         data_verification_error=None,
     )
 
-@patch("src.agent.nodes.execute.BigQueryService")
+@patch("src.agent.nodes.bigquery_sql_execute.BigQueryService")
 def test_execute_node_safety_check_read_only(mock_bq_service, base_state):
     # Mock BigQueryService
     mock_instance = mock_bq_service.return_value
@@ -45,7 +44,7 @@ def test_execute_node_safety_check_read_only(mock_bq_service, base_state):
     mock_instance.execute_query.assert_called_once()
     assert result["execution_success"] is True
 
-@patch("src.agent.nodes.execute.BigQueryService")
+@patch("src.agent.nodes.bigquery_sql_execute.BigQueryService")
 def test_execute_node_safety_check_insert_allowed(mock_bq_service, base_state):
     mock_instance = mock_bq_service.return_value
     mock_instance.execute_query.return_value = MagicMock(success=True, result=[], target_table=f"{ALLOWED_PREFIX}.my_table", error_message=None)
@@ -58,7 +57,7 @@ def test_execute_node_safety_check_insert_allowed(mock_bq_service, base_state):
     mock_instance.execute_query.assert_called_once()
     assert result["execution_success"] is True
 
-@patch("src.agent.nodes.execute.BigQueryService")
+@patch("src.agent.nodes.bigquery_sql_execute.BigQueryService")
 def test_execute_node_safety_check_insert_forbidden(mock_bq_service, base_state):
     state = base_state.copy()
     state["bigquery_sql"] = "INSERT INTO `other_project.dataset.table` (id) VALUES (1)"
@@ -70,7 +69,7 @@ def test_execute_node_safety_check_insert_forbidden(mock_bq_service, base_state)
     assert result["execution_success"] is False
     assert "Modification not allowed" in result["execution_error"]
 
-@patch("src.agent.nodes.execute.BigQueryService")
+@patch("src.agent.nodes.bigquery_sql_execute.BigQueryService")
 def test_execute_node_safety_check_delete_forbidden(mock_bq_service, base_state):
     state = base_state.copy()
     state["bigquery_sql"] = "DELETE FROM `other_project.dataset.table` WHERE true"
@@ -81,7 +80,7 @@ def test_execute_node_safety_check_delete_forbidden(mock_bq_service, base_state)
     assert result["execution_success"] is False
     assert "Modification not allowed" in result["execution_error"]
 
-@patch("src.agent.nodes.execute.BigQueryService")
+@patch("src.agent.nodes.bigquery_sql_execute.BigQueryService")
 def test_execute_node_safety_check_parse_error(mock_bq_service, base_state):
     state = base_state.copy()
     state["bigquery_sql"] = "INVALID SQL STATEMENT"
@@ -92,7 +91,7 @@ def test_execute_node_safety_check_parse_error(mock_bq_service, base_state):
     assert result["execution_success"] is False
     assert "Could not parse SQL" in result["execution_error"]
 
-@patch("src.agent.nodes.execute.BigQueryService")
+@patch("src.agent.nodes.bigquery_sql_execute.BigQueryService")
 def test_execute_node_safety_check_custom_config(mock_bq_service, base_state):
     # Test with custom allowed dataset via env var
     with patch.dict(os.environ, {"DATA_VERIFICATION_ALLOWED_DATASET": CUSTOM_PREFIX}):
@@ -107,7 +106,7 @@ def test_execute_node_safety_check_custom_config(mock_bq_service, base_state):
         mock_instance.execute_query.assert_called_once()
         assert result["execution_success"] is True
 
-@patch("src.agent.nodes.execute.BigQueryService")
+@patch("src.agent.nodes.bigquery_sql_execute.BigQueryService")
 def test_execute_node_safety_check_custom_config_forbidden(mock_bq_service, base_state):
     # Test that default prefix is NOT allowed when custom one is set
     with patch.dict(os.environ, {"DATA_VERIFICATION_ALLOWED_DATASET": CUSTOM_PREFIX}):

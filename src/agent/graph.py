@@ -201,7 +201,6 @@ def run_conversion(spark_sql: str, max_retries: Optional[int] = None) -> AgentSt
         "max_retries": max_retries,
         "conversion_history": [],
         "execution_success": None,
-        "execution_result": None,
         "execution_target_table": None,
         "execution_error": None,
         "data_verification_success": None,

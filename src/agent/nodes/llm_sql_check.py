@@ -59,7 +59,8 @@ def llm_sql_check(state: AgentState) -> dict[str, Any]:
             model_name=model_name,
             usage=usage,
             status="SUCCESS",
-            latency_ms=latency_ms
+            latency_ms=latency_ms,
+            run_id=state.get("run_id")
         )
     except Exception as e:
         logger.error(f"[Node: llm_sql_check] ✗ Error during LLM invoke: {e}")
@@ -68,7 +69,8 @@ def llm_sql_check(state: AgentState) -> dict[str, Any]:
             agent_session_id=state.get("agent_session_id", "unknown"),
             node_name="llm_sql_check",
             model_name=getattr(llm, "model_name", "unknown"),
-            error_message=str(e)
+            error_message=str(e),
+            run_id=state.get("run_id")
         )
         return {
             "llm_check_success": False,
