@@ -81,8 +81,8 @@ cp env.example .env
 ### Feature Toggles
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `EXECUTE_ENABLED` | Enable BigQuery execution step | `false` |
-| `DATA_VERIFICATION_ENABLED` | Enable data verification step | `false` |
+| `EXECUTE_ENABLED` | Enable BigQuery execution step | `true` |
+| `DATA_VERIFICATION_ENABLED` | Enable data verification step | `true` |
 
 ### Monitoring & Auditing
 | Variable | Description | Default / Example |
@@ -140,11 +140,13 @@ curl -X POST http://localhost:8000/convert \
   "retry_count": 0,
   "execution_success": true,
   "execution_target_table": "project.dataset.table",
+  "execution_job_id": "job_1234567890",
   "data_verification_success": true,
   "data_verification_result": {
     "mode": "row_count",
     "match": true,
     "count": 100
-  }
+  },
+  "agent_session_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```

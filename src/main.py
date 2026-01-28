@@ -246,10 +246,12 @@ async def convert_sql(request: ConvertRequest):
             warning=warning,
             execution_success=result.get("execution_success"),
             execution_target_table=result.get("execution_target_table"),
+            execution_job_id=result.get("execution_job_id"),
             execution_error=result.get("execution_error"),
             data_verification_success=result.get("data_verification_success"),
             data_verification_result=result.get("data_verification_result"),
             data_verification_error=result.get("data_verification_error"),
+            agent_session_id=result.get("agent_session_id"),
         )
         
     except ValueError as e:
