@@ -98,6 +98,27 @@ gcloud auth application-default login
 ```
 Or set `GOOGLE_APPLICATION_CREDENTIALS` to your service account key path.
 
+## 📊 BigQuery Logging
+
+The agent automatically logs execution details and LLM interactions to BigQuery for auditing and debugging purposes.
+
+### Execution Logs (`AGENT_TRACE_LOG_TABLE`)
+Tracks the workflow execution, including:
+- Run ID and Session ID
+- Step execution status (Validation, Dry Run, Execution)
+- SQL queries (Input Spark, Output BigQuery)
+- Verification results
+
+![Execution Log](bq_execution_log.png)
+
+### LLM Logs (`MODEL_USAGE_LOG_TABLE`)
+Records detailed LLM interaction metrics:
+- Prompt and Response content (filtered for sensitivity)
+- Token usage (Input/Output tokens)
+- Model latency and cost estimates
+
+![LLM Log](bq_llm_log.png)
+
 ## 🏃 Running the Service
 
 ```bash
