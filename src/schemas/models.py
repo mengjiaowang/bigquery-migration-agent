@@ -38,6 +38,7 @@ class ConvertResponse(BaseModel):
     execution_success: Optional[bool] = None
     # execution_result removed
     execution_target_table: Optional[str] = None
+    execution_job_id: Optional[str] = None
     execution_error: Optional[str] = None
 
     # Data Verification results
@@ -48,3 +49,4 @@ class ConvertResponse(BaseModel):
     retry_count: int
     conversion_history: List[ConversionHistory] = []
     warning: Optional[str] = None
+    agent_session_id: Optional[str] = None

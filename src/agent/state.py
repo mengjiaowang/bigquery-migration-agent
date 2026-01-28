@@ -37,6 +37,7 @@ class AgentState(TypedDict):
     execution_success: Optional[bool]
     # execution_result removed
     execution_target_table: Optional[str]
+    execution_job_id: Optional[str]
     execution_error: Optional[str]
 
     # Data Verification results
