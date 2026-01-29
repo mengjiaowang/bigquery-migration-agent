@@ -1,6 +1,5 @@
-"""Spark SQL validation node."""
-
 import logging
+import re
 from typing import Any
 
 import sqlglot
@@ -10,6 +9,47 @@ from src.agent.state import AgentState
 from src.services.table_mapping import get_table_mapping_service
 
 logger = logging.getLogger(__name__)
+
+
+def preprocess_spark_sql(sql_content: str) -> str:
+    """Pre-process SQL to handle Hive variables/macros for parser compatibility."""
+    lines = sql_content.split('\n')
+    cleaned_lines = []
+    variables = {}
+
+    # Regex for: set hivevar:key=value;
+    # Handles semicolon, various spacing, and complex values
+    hivevar_pattern = re.compile(r"^\s*set\s+hivevar:([a-zA-Z0-9_]+)\s*=\s*(.*?)\s*;?\s*$", re.IGNORECASE)
+
+    for line in lines:
+        match = hivevar_pattern.match(line.strip())
+        if match:
+            key = match.group(1)
+            value = match.group(2).strip().rstrip(';')
+            # If value is a complex expression (contains ${ or function calls),
+            # provide a safe placeholder to pass syntax validation.
+            if "${" in value or "(" in value:
+                variables[key] = f"placeholder_{key}"
+            else:
+                variables[key] = value
+            # Remove the 'set' line as sqlglot's Spark dialect often chokes on 'hivevar:'
+            continue
+
+        cleaned_lines.append(line)
+
+    processed_sql = "\n".join(cleaned_lines)
+
+    # Substitute known variables
+    for key, value in variables.items():
+        # Replace both ${hivevar:key} and ${key}
+        processed_sql = processed_sql.replace(f"${{hivevar:{key}}}", value)
+        processed_sql = processed_sql.replace(f"${{{key}}}", value)
+
+    # Catch-all: Replace all remaining ${...} patterns
+    # Ensures that table names like table_${date} become table_dummy_var
+    processed_sql = re.sub(r'\$\{.*?\}', 'dummy_var', processed_sql)
+
+    return processed_sql
 
 
 def spark_sql_validate(state: AgentState) -> dict[str, Any]:
@@ -37,6 +77,9 @@ def spark_sql_validate(state: AgentState) -> dict[str, Any]:
             # Handle case where only start block is present (unlikely but possible)
             spark_sql = "\n".join(lines[1:]).strip()
             
+    # Pre-process SQL to handle hivevars and macros
+    spark_sql = preprocess_spark_sql(spark_sql)
+    
     mapping_service = get_table_mapping_service()
     
     source_tables = set()
